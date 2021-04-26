@@ -7,14 +7,13 @@
     <authors>Microsoft</authors>
     <owners>Microsoft</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>C#/WinRT provides packaged WinRT projection support for the C# language. It is compatible with both .NET Standard 2.0 and .NET 5 and does not require any built-in knowledge of WinRT by the C# compiler.</description>
+    <description>C#/WinRT provides packaged WinRT projection support for the C# language. It is compatible with .NET 5 and does not require any built-in knowledge of WinRT by the C# compiler.</description>
     <releaseNotes></releaseNotes>
     <tags>managed C# WinRT cswinrt WinMD xlang</tags>
     <copyright>© Microsoft Corporation. All rights reserved.</copyright>
     <license type="file">LICENSE</license>
     <projectUrl>https://github.com/microsoft/cswinrt/tree/master/</projectUrl>
     <dependencies>
-      <group targetFramework=".NETStandard2.0" />
       <group targetFramework=".NET5.0" />
     </dependencies>
   </metadata>
@@ -23,8 +22,17 @@
     <file src="$cswinrt_exe$"/>
     <file src="Microsoft.Windows.CsWinRT.props" target="build"/>
     <file src="Microsoft.Windows.CsWinRT.targets" target="build"/>
+    <file src="Microsoft.Windows.CsWinRT.Authoring.targets" target="build"/>
+    <file src="Microsoft.Windows.CsWinRT.Prerelease*.targets" target="build"/>
+    <file src="Microsoft.Windows.CsWinRT.Authoring.Transitive.targets" target="build"/>
+    <file src="Microsoft.Windows.CsWinRT.Authoring.Transitive.targets" target="buildTransitive"/>
     <file src="readme.txt"/>
-    <file src="$netstandard2_runtime$" target="lib\netstandard2.0\"/>
     <file src="$net5_runtime$" target="lib\net5.0\"/>
+    <file src="$source_generator$" target="analyzers\dotnet\cs\"/>
+    <file src="$winrt_host_x64$" target ="runtimes\win-x64\native"/>
+    <file src="$winrt_host_x86$" target ="runtimes\win-x86\native"/>
+    <file src="$winrt_host_arm$" target ="runtimes\win-arm\native"/>
+    <file src="$winrt_host_arm64$" target ="runtimes\win-arm64\native"/>
+    <file src="$winrt_shim$" target ="lib\net5.0\"/>
   </files>
 </package>
