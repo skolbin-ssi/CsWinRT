@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -6,7 +9,12 @@ using WinRT.Interop;
 
 namespace WinRT
 {
-    public interface IWinRTObject : IDynamicInterfaceCastable
+#if EMBED
+    internal
+#else
+    public
+#endif
+    interface IWinRTObject : IDynamicInterfaceCastable
     {
         bool IDynamicInterfaceCastable.IsInterfaceImplemented(RuntimeTypeHandle interfaceType, bool throwIfNotImplemented)
         {
@@ -117,7 +125,7 @@ namespace WinRT
                     var qiObjRef = objRef.As<IUnknownVftbl>(GuidGenerator.GetIID(helperType));
                     if (!QueryInterfaceCache.TryAdd(interfaceType, qiObjRef))
                     {
-                        objRef.Dispose();
+                        qiObjRef.Dispose();
                     }
                     return true;
                 }

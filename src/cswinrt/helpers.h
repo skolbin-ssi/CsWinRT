@@ -38,6 +38,11 @@ namespace cswinrt
         return get_category(type) == category::interface_type && has_attribute(type, "Windows.Foundation.Metadata"sv, "ExclusiveToAttribute"sv);
     }
 
+    bool is_projection_internal(TypeDef const& type)
+    {
+        return has_attribute(type, "WinRT.Interop"sv, "ProjectionInternalAttribute"sv);
+    }
+
     bool is_flags_enum(TypeDef const& type)
     {
         return get_category(type) == category::enum_type && has_attribute(type, "System"sv, "FlagsAttribute"sv);
@@ -557,6 +562,12 @@ namespace cswinrt
                     { "Matrix3DHelper" },
                 }
             },
+            { "WinRT.Interop",
+                {
+                    { "HWND", "System", "IntPtr" },
+                    { "ProjectionInternalAttribute" },
+                }
+            },
             { "Windows.Foundation",
                 {
                     { "DateTime", "System", "DateTimeOffset", true },
@@ -892,7 +903,8 @@ namespace cswinrt
         Projected,
         CCW,
         ABI,
-        NonProjected
+        NonProjected,
+        StaticAbiClass
     };
 
     std::string get_mapped_element_type(ElementType elementType)

@@ -28,14 +28,15 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Security.Cryptography;
 using Windows.Security.Cryptography.Core;
 using System.Reflection;
+using Windows.Devices.Enumeration.Pnp;
 
-#if NET5_0
+#if NET
 using WeakRefNS = System;
 #else
 using WeakRefNS = WinRT;
 #endif
 
-#if NET5_0
+#if NET
 // Test SupportedOSPlatform warnings for APIs targeting 10.0.19041.0:
 [assembly: global::System.Runtime.Versioning.SupportedOSPlatform("Windows10.0.18362.0")]
 #endif
@@ -49,6 +50,118 @@ namespace UnitTest
         public TestCSharp()
         {
             TestObject = new Class();
+        }
+
+
+        // Test a fix for a bug in Mono.Cecil that was affecting the IIDOptimizer when it encountered long class names 
+        [Fact]
+        public void TestLongClassNameEventSource()
+        {
+            bool flag = false;
+            var long_class_name = new ABCDEFGHIJKLMNOPQRSTUVQXYZabcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVQXYZabcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz();
+            long_class_name.EventForAVeryLongClassName +=
+                (ABCDEFGHIJKLMNOPQRSTUVQXYZabcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVQXYZabcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz sender, ABCDEFGHIJKLMNOPQRSTUVQXYZabcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVQXYZabcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz args)
+                => flag = true;
+            long_class_name.InvokeEvent();
+            Assert.True(flag);
+        }
+
+        [Fact]
+        public void TestEventArgsVector()
+        { 
+            var eventArgsVector = TestObject.GetEventArgsVector();
+            Assert.Equal(1, eventArgsVector.Count);
+            foreach (var dataErrorChangedEventArgs in eventArgsVector)
+            {
+                var propName  = dataErrorChangedEventArgs.PropertyName;
+                Assert.Equal("name", propName);
+            }
+        }
+
+        [Fact]
+        public void TestNonGenericDelegateVector()
+        {
+            var provideUriVector = TestObject.GetNonGenericDelegateVector();
+
+            Assert.Equal(1, provideUriVector.Count);
+            
+            foreach (var provideUri in provideUriVector)
+            {
+                Uri delegateTarget = provideUri.Invoke();
+                Assert.Equal("http://microsoft.com", delegateTarget.OriginalString);
+            }
+        }
+
+        [Fact]
+        public void TestEnums()
+        {
+            // Enums
+            var expectedEnum = EnumValue.Two;
+            TestObject.EnumProperty = expectedEnum;
+            Assert.Equal(expectedEnum, TestObject.EnumProperty);
+            expectedEnum = EnumValue.One;
+            TestObject.CallForEnum(() => expectedEnum);
+            TestObject.EnumPropertyChanged +=
+                (object sender, EnumValue value) => Assert.Equal(expectedEnum, value);
+            TestObject.RaiseEnumChanged();
+
+            var expectedEnumStruct = new EnumStruct() { value = EnumValue.Two };
+            TestObject.EnumStructProperty = expectedEnumStruct;
+            Assert.Equal(expectedEnumStruct, TestObject.EnumStructProperty);
+            expectedEnumStruct = new EnumStruct() { value = EnumValue.One };
+            TestObject.CallForEnumStruct(() => expectedEnumStruct);
+            TestObject.EnumStructPropertyChanged +=
+                (object sender, EnumStruct value) => Assert.Equal(expectedEnumStruct, value);
+            TestObject.RaiseEnumStructChanged();
+
+            var expectedEnums = new EnumValue[] { EnumValue.One, EnumValue.Two };
+            TestObject.EnumsProperty = expectedEnums;
+            Assert.Equal(expectedEnums, TestObject.EnumsProperty);
+            TestObject.CallForEnums(() => expectedEnums);
+            Assert.Equal(expectedEnums, TestObject.EnumsProperty);
+
+            TestObject.EnumsProperty = null;
+            Assert.Equal(null, TestObject.EnumsProperty);
+
+            var expectedEnumStructs = new EnumStruct[] { new EnumStruct(EnumValue.One), new EnumStruct(EnumValue.Two) };
+            TestObject.EnumStructsProperty = expectedEnumStructs;
+            Assert.Equal(expectedEnumStructs, TestObject.EnumStructsProperty);
+            TestObject.CallForEnumStructs(() => expectedEnumStructs);
+            Assert.Equal(expectedEnumStructs, TestObject.EnumStructsProperty);
+
+            TestObject.EnumStructsProperty = null;
+            Assert.Equal(null, TestObject.EnumStructsProperty);
+
+            // Flags
+            var expectedFlag = FlagValue.All;
+            TestObject.FlagProperty = expectedFlag;
+            Assert.Equal(expectedFlag, TestObject.FlagProperty);
+            expectedFlag = FlagValue.One;
+            TestObject.CallForFlag(() => expectedFlag);
+            TestObject.FlagPropertyChanged +=
+                (object sender, FlagValue value) => Assert.Equal(expectedFlag, value);
+            TestObject.RaiseFlagChanged();
+
+            var expectedFlagStruct = new FlagStruct() { value = FlagValue.All };
+            TestObject.FlagStructProperty = expectedFlagStruct;
+            Assert.Equal(expectedFlagStruct, TestObject.FlagStructProperty);
+            expectedFlagStruct = new FlagStruct() { value = FlagValue.One };
+            TestObject.CallForFlagStruct(() => expectedFlagStruct);
+            TestObject.FlagStructPropertyChanged +=
+                (object sender, FlagStruct value) => Assert.Equal(expectedFlagStruct, value);
+            TestObject.RaiseFlagStructChanged();
+
+            var expectedFlags = new FlagValue[] { FlagValue.One, FlagValue.All };
+            TestObject.FlagsProperty = expectedFlags;
+            Assert.Equal(expectedFlags, TestObject.FlagsProperty);
+            TestObject.CallForFlags(() => expectedFlags);
+            Assert.Equal(expectedFlags, TestObject.FlagsProperty);
+
+            var expectedFlagStructs = new FlagStruct[] { new FlagStruct(FlagValue.One), new FlagStruct(FlagValue.All) };
+            TestObject.FlagStructsProperty = expectedFlagStructs;
+            Assert.Equal(expectedFlagStructs, TestObject.FlagStructsProperty);
+            TestObject.CallForFlagStructs(() => expectedFlagStructs);
+            Assert.Equal(expectedFlagStructs, TestObject.FlagStructsProperty);
         }
 
         [Fact]
@@ -320,10 +433,10 @@ namespace UnitTest
         [Fact]
         public void TestReadOnlyDictionaryLookup()
         {
-            Assert.True(LookupPorts().Wait(1000));
+            Assert.True(LookupPorts().Wait(5000));
         }
 
-#if NET5_0
+#if NET
         async Task InvokeStreamWriteZeroBytes()
         {
             var random = new Random(42);
@@ -636,6 +749,15 @@ namespace UnitTest
             TestObject.RaiseDataErrorChanged();
             Assert.Equal("name", propertyName);
 
+            bool eventCalled = false;
+            TestObject.CanExecuteChanged += (object sender, EventArgs e) =>
+            {
+                eventCalled = true;
+            };
+
+            TestObject.RaiseCanExecuteChanged();
+            Assert.True(eventCalled);
+
             // IXamlServiceProvider <-> IServiceProvider
             var serviceProvider = Class.ServiceProvider.As<IServiceProviderInterop>();
             IntPtr service;
@@ -729,6 +851,9 @@ namespace UnitTest
             {
                 Assert.Equal(stringMap[item.Key], item.Value);
             }
+            KeyValuePair<string, string>[] pairs = new KeyValuePair<string, string>[2];
+            stringMap.CopyTo(pairs, 0);
+            Assert.Equal(2, pairs.Length);
         }
 
         [Fact]
@@ -1053,6 +1178,17 @@ namespace UnitTest
             Assert.True(val.bools.z);
         }
 
+        [Fact]
+        public void TestBlittableArrays()
+        {
+            int[] arr = new[] { 2, 4, 6, 8 };
+            TestObject.SetInts(arr);
+            Assert.True(TestObject.GetInts().SequenceEqual(arr));
+
+            TestObject.SetInts(null);
+            Assert.Null(TestObject.GetInts());
+        }
+
 #if NETCOREAPP2_0
         [Fact]
         public void TestGenericCast()
@@ -1092,12 +1228,6 @@ namespace UnitTest
             var staticFactory = ComImports.As<IStringableInterop>();
             staticFactory.ToString(out hstr);
             Assert.Equal("ComImports", MarshalString.FromAbi(hstr));
-
-            // IInspectable-based (projected) interop interface
-            var interop = Windows.Security.Credentials.UI.UserConsentVerifier.As<IUserConsentVerifierInterop>();
-            var guid = GuidGenerator.CreateIID(typeof(IAsyncOperation<UserConsentVerificationResult>));
-            var operation = (IAsyncOperation<UserConsentVerificationResult>)interop.RequestVerificationForWindowAsync(0, "message", guid);
-            Assert.NotNull(operation);
         }
 
         [Fact]
@@ -1314,6 +1444,59 @@ namespace UnitTest
             TestObject.CopyProperties(managedProperties);
             Assert.Equal(managedProperties.ReadWriteProperty, TestObject.ReadWriteProperty);
         }
+
+        [Fact]
+        public void TestCCWMarshaler()
+        {
+            Guid IID_IMarshal = new Guid("00000003-0000-0000-c000-000000000046");
+            var managedProperties = new ManagedProperties(42);
+            IObjectReference ccw = MarshalInterface<IProperties1>.CreateMarshaler(managedProperties);
+            ccw.TryAs<IUnknownVftbl>(IID_IMarshal, out var marshalCCW);
+            Assert.NotNull(marshalCCW);
+
+            var array = new byte[] { 0x01 };
+            var buff = array.AsBuffer();
+            IObjectReference ccw2 = MarshalInterface<IBuffer>.CreateMarshaler(buff);
+            ccw2.TryAs<IUnknownVftbl>(IID_IMarshal, out var marshalCCW2);
+            Assert.NotNull(marshalCCW2);
+        }
+
+#if NET
+        [Fact]
+        public void TestDelegateCCWMarshaler()
+        {
+            CreateAndValidateStreamedFile().Wait();
+        }
+
+        private async Task CreateAndValidateStreamedFile()
+        {
+            var storageFile = await StorageFile.CreateStreamedFileAsync("CreateAndValidateStreamedFile.txt", StreamedFileWriter, null);
+            using var inputStream = await storageFile.OpenSequentialReadAsync();
+            using var stream = inputStream.AsStreamForRead();
+            byte[] buff = new byte[50];
+            var numRead = stream.Read(buff, 0, 50);
+            Assert.True(numRead > 0);
+            var result = System.Text.Encoding.Default.GetString(buff, 0, numRead).TrimEnd(null);
+            Assert.Equal("Success!", result);
+        }
+
+        private static async void StreamedFileWriter(StreamedFileDataRequest request)
+        {
+            try
+            {
+                using (var stream = request.AsStreamForWrite())
+                using (var streamWriter = new StreamWriter(stream))
+                {
+                    await streamWriter.WriteLineAsync("Success!");
+                }
+                request.Dispose();
+            }
+            catch (Exception)
+            {
+                request.FailAndClose(StreamedFileFailureMode.Incomplete);
+            }
+        }
+#endif
 
         [Fact]
         public void TestWeakReference()
@@ -1970,6 +2153,9 @@ namespace UnitTest
 
             string s = "Hello World!";
             Assert.Equal(s, Class.UnboxString(s));
+
+            ProvideInt intHandler = () => 42;
+            Assert.Equal(intHandler, Class.UnboxDelegate(intHandler));
         }
 
         [Fact]
@@ -2039,6 +2225,15 @@ namespace UnitTest
             Assert.IsType<string>(str2);
             Assert.Equal(string.Empty, (string)str1);
             Assert.Equal(string.Empty, (string)str2);
+        }
+
+        [Fact]
+        public void TestDelegateUnboxing()
+        {
+            var del = Class.BoxedDelegate;
+            Assert.IsType<ProvideUri>(del);
+            var provideUriDel = (ProvideUri) del;
+            Assert.Equal(new Uri("http://microsoft.com"), provideUriDel());
         }
 
         internal class ManagedType { }
@@ -2133,24 +2328,36 @@ namespace UnitTest
                 objectAcquired.Set();
                 valueAcquired.WaitOne();
 
-                // Call to proxy object acquired from MTA which should throw
-                Assert.ThrowsAny<System.Exception>(() => proxyObject.Commands.Count);
+                // Object gets proxied to the apartment.
+                Assert.Equal(2, proxyObject.Commands.Count);
                 agileReference.Dispose();
+
+                proxyObject2 = agileReference2.Get();
             }
 
             public void CheckValue()
             {
                 objectAcquired.WaitOne();
-
                 Assert.Equal(ApartmentState.MTA, Thread.CurrentThread.GetApartmentState());
                 proxyObject = agileReference.Get();
                 Assert.Equal(2, proxyObject.Commands.Count);
+                
+                nonAgileObject2 = new Windows.UI.Popups.PopupMenu();
+                agileReference2 = nonAgileObject2.AsAgile();
+
                 valueAcquired.Set();
             }
 
-            private Windows.UI.Popups.PopupMenu nonAgileObject;
-            private Windows.UI.Popups.PopupMenu proxyObject;
-            private AgileReference<Windows.UI.Popups.PopupMenu> agileReference;
+            public void CallProxyObject()
+            {
+                // Call to a proxy object which we internally use an agile reference
+                // to resolve after the apartment is gone should throw.
+                Assert.ThrowsAny<System.Exception>(() => proxyObject.Commands);
+            }
+
+            private Windows.UI.Popups.PopupMenu nonAgileObject, nonAgileObject2;
+            private Windows.UI.Popups.PopupMenu proxyObject, proxyObject2;
+            private AgileReference<Windows.UI.Popups.PopupMenu> agileReference, agileReference2;
             private readonly AutoResetEvent objectAcquired = new AutoResetEvent(false);
             private readonly AutoResetEvent valueAcquired = new AutoResetEvent(false);
         }
@@ -2169,6 +2376,14 @@ namespace UnitTest
             mtaThread.Start();
             mtaThread.Join();
             staThread.Join();
+
+            // Spin another STA thread after the other 2 threads are done and try to
+            // access one of the proxied objects.  They should fail as there is no context
+            // to switch to in order to marshal it to the current apartment.
+            Thread anotherStaThread = new Thread(new ThreadStart(caller.CallProxyObject));
+            anotherStaThread.SetApartmentState(ApartmentState.STA);
+            anotherStaThread.Start();
+            anotherStaThread.Join();
         }
 
         [Fact]
@@ -2252,6 +2467,17 @@ namespace UnitTest
             Assert.Equal(TestObject.ReadWriteProperty, nativeProperties.ReadWriteProperty);
         }
 
+        [Fact]
+        public void TestSetPropertyAcrossProjections()
+        {
+            var setPropertyClass = new TestComponentCSharp.AnotherAssembly.SetPropertyClass();
+            setPropertyClass.ReadWriteProperty = 4;
+            Assert.Equal(4, setPropertyClass.ReadWriteProperty);
+
+            IProperties1 property = setPropertyClass;
+            Assert.Equal(4, property.ReadWriteProperty);
+        }
+
         // Test scenario where type reported by runtimeclass name is not a valid type (i.e. internal type).
         [Fact]
         public void TestNonProjectedRuntimeClass()
@@ -2306,15 +2532,46 @@ namespace UnitTest
             Assert.True(TestObject.IterableOfObjectIterablesProperty.SequenceEqual(listOfListOfUris));
         }
 
+        (System.WeakReference<Class>, System.WeakReference<EventHandlerClass>) TestEventDelegateCleanup()
+        {
+            // Both WinRT object and handler class alive.
+            var eventCalled = false;
+            var eventHandlerClass = new EventHandlerClass(() => eventCalled = true);
+            var classInstance = new Class();
+            classInstance.IntPropertyChanged += eventHandlerClass.IntPropertyChanged;
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
+            classInstance.IntProperty = 3;
+            Assert.True(eventCalled);
+
+            // No strong reference to handler class, but delegate is still registered on
+            // the WinRT object keeping it alive.
+            eventCalled = false;
+            var weakEventHandlerClass = new System.WeakReference<EventHandlerClass>(eventHandlerClass);
+            eventHandlerClass = null;
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
+            classInstance.IntProperty = 3;
+            Assert.True(eventCalled);
+            Assert.True(weakEventHandlerClass.TryGetTarget(out var _));
+
+            // No strong reference to WinRT object.  It should no longer be alive
+            // and should also cause for the event handler class to be no longer alive.
+            var weakClassInstance = new System.WeakReference<Class>(classInstance);
+            classInstance = null;
+            return (weakClassInstance, weakEventHandlerClass);
+        }
+
+        // Ensure that event subscription state is properly cached to enable later unsubscribes
         [Fact]
-        public void TestStaticEventWithGC()
+        public void TestEventSourceCaching()
         {
             bool eventCalled = false;
-            void Class_StaticIntPropertyChanged(object sender, int e)
-            {
-                eventCalled = (e == 3);
-            }
+            void Class_StaticIntPropertyChanged(object sender, int e) => eventCalled = (e == 3);
+            bool eventCalled2 = false;
+            void Class_StaticIntPropertyChanged2(object sender, int e) => eventCalled2 = (e == 3);
 
+            // Test static codegen-based EventSource caching
             Class.StaticIntPropertyChanged += Class_StaticIntPropertyChanged;
             GC.Collect(2, GCCollectionMode.Forced, true);
             GC.WaitForPendingFinalizers();
@@ -2326,9 +2583,154 @@ namespace UnitTest
             GC.WaitForPendingFinalizers();
             Class.StaticIntProperty = 3;
             Assert.True(eventCalled);
+            eventCalled = false;
+
+            // Test adding another delegate to validate COM reference tracking in EventSource
+            Class.StaticIntPropertyChanged += Class_StaticIntPropertyChanged2;
+            Class.StaticIntProperty = 3;
+            Assert.True(eventCalled);
+            Assert.True(eventCalled2);
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
+            eventCalled = false;
+            eventCalled2 = false;
+            Class.StaticIntPropertyChanged -= Class_StaticIntPropertyChanged;
+            Class.StaticIntProperty = 3;
+            Assert.False(eventCalled);
+            Assert.True(eventCalled2);
+
+            // Test dynamic WeakRef-based EventSource caching
+            eventCalled = false;
+            static void Subscribe(EventHandler<int> handler) => Singleton.Instance.IntPropertyChanged += handler;
+            static void Unsubscribe(EventHandler<int> handler) => Singleton.Instance.IntPropertyChanged -= handler;
+            static void Assign(int value) => Singleton.Instance.IntProperty = value;
+            Subscribe(Class_StaticIntPropertyChanged);
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
+            Unsubscribe(Class_StaticIntPropertyChanged);
+            Assign(3);
+            Assert.False(eventCalled);
+            Subscribe(Class_StaticIntPropertyChanged);
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
+            Assign(3);
+            Assert.True(eventCalled);
+
+            // Test that event delegates don't leak when not unsubscribed.
+            // Test runs into a different function as the finalizer wasn't
+            // getting triggered otherwise with a weak reference.
+            (System.WeakReference<Class> weakClassInstance, System.WeakReference<EventHandlerClass> weakEventHandlerClass) =
+                TestEventDelegateCleanup();
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
+            Assert.False(weakClassInstance.TryGetTarget(out _));
+            Assert.False(weakEventHandlerClass.TryGetTarget(out _));
         }
 
-#if NET5_0
+        class EventHandlerClass
+        {
+            private readonly Action eventCalled;
+
+            public EventHandlerClass(Action eventCalled)
+            {
+                this.eventCalled = eventCalled;
+            }
+
+            public void IntPropertyChanged(object sender, int e) => eventCalled();
+        }
+
+        // Test scenario where events may be removed by the native event source without an unsubscribe.
+        [Fact]
+        public void TestEventRemovalByEventSource()
+        {
+            bool eventCalled = false;
+            void Class_IntPropertyChanged(object sender, int e) => eventCalled = (e == 3);
+            bool eventCalled2 = false;
+            void Class_IntPropertyChanged2(object sender, int e) => eventCalled2 = (e == 3);
+
+            var classInstance = new Class();
+            classInstance.IntPropertyChanged += Class_IntPropertyChanged;
+            classInstance.IntProperty = 3;
+            Assert.True(eventCalled);
+            Assert.False(eventCalled2);
+            eventCalled = false;
+            classInstance.RemoveLastIntPropertyChangedHandler();
+            classInstance.IntPropertyChanged += Class_IntPropertyChanged2;
+            classInstance.IntProperty = 3;
+            Assert.False(eventCalled);
+            Assert.True(eventCalled2);
+            eventCalled2 = false;
+
+            classInstance.RemoveLastIntPropertyChangedHandler();
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            GC.WaitForPendingFinalizers();
+            classInstance.IntPropertyChanged += Class_IntPropertyChanged;
+            classInstance.IntProperty = 3;
+            Assert.True(eventCalled);
+            Assert.False(eventCalled2);
+            eventCalled = false;
+
+            classInstance.IntPropertyChanged += Class_IntPropertyChanged2;
+            classInstance.IntProperty = 3;
+            Assert.True(eventCalled);
+            Assert.True(eventCalled2);
+        }
+
+        [Fact]
+        private async Task TestPnpPropertiesInLoop()
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                await TestPnpPropertiesAsync();
+            }
+        }
+
+        private async Task TestPnpPropertiesAsync()
+        {
+            var requestedDeviceProperties = new List<string>()
+                {
+                    "System.Devices.ClassGuid",
+                    "System.Devices.ContainerId",
+                    "System.Devices.DeviceHasProblem",
+                    "System.Devices.DeviceInstanceId",
+                    "System.Devices.Parent",
+                    "System.Devices.Present",
+                    "System.ItemNameDisplay",
+                    "System.Devices.Children",
+                };
+            var devicefilter = "System.Devices.Present:System.StructuredQueryType.Boolean#True";
+            var presentDevices = (await PnpObject.FindAllAsync(PnpObjectType.Device, requestedDeviceProperties, devicefilter).AsTask().ConfigureAwait(false)).Select(pnpObject => {
+                var prop = pnpObject.Properties;
+                // Iterating through each key is necessary for this test even though we do not use each key directly
+                // This makes it more probable for a native pointer to get repeated and a value type to be cached and seen again.
+                foreach (var key in prop.Keys)
+                {
+                    var val = prop[key];
+                    if (string.CompareOrdinal(key, "System.Devices.ContainerId") == 0 && val != null)
+                    {
+                        var val4 = pnpObject.Properties[key];
+                        if (val is not Guid || val4 is not Guid)
+                        {
+                            throw new Exception("Incorrect value type Guid. Actual type: " + val.GetType() + "  " + val4.GetType());
+                        }
+                    }
+                    if (string.CompareOrdinal(key, "System.Devices.Parent") == 0 && val != null)
+                    {
+                        var val4 = pnpObject.Properties[key];
+                        if (val is not string || val4 is not string)
+                        {
+                            throw new Exception("Incorrect value type string Actual type: " + val.GetType() + "  " + val4.GetType());
+                        }
+                    }
+
+                }
+                return pnpObject;
+            }).ToList();
+        }
+
+#if NET
         [TestComponentCSharp.Warning]  // NO warning CA1416
         class WarningManaged { };
 

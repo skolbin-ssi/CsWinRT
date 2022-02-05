@@ -1,4 +1,8 @@
-﻿using System;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -9,6 +13,9 @@ using System.Threading;
 namespace WinRT
 {
     [Flags]
+#if EMBED
+    internal
+#endif
     enum TypeNameGenerationFlags
     {
         None = 0,
@@ -22,13 +29,38 @@ namespace WinRT
         NoCustomTypeName = 0x2
     }
 
+#if EMBED
+    internal
+#endif
     static class TypeNameSupport
     {
-        private static List<Assembly> projectionAssemblies = new List<Assembly>();
+        private static readonly List<Assembly> projectionAssemblies = new List<Assembly>();
+        private static readonly ConcurrentDictionary<string, Type> typeNameCache = new ConcurrentDictionary<string, Type>(StringComparer.Ordinal) { ["TrackerCollection<T>"] = null };
 
         public static void RegisterProjectionAssembly(Assembly assembly)
         {
             projectionAssemblies.Add(assembly);
+        }
+
+        /// <summary>
+        /// Parses and loads the given type name, if not found in the cache.
+        /// </summary>
+        /// <param name="runtimeClassName">The runtime class name to attempt to parse.</param>
+        /// <returns>The type, if found.  Null otherwise</returns>
+        public static Type FindTypeByNameCached(string runtimeClassName)
+        {
+            return typeNameCache.GetOrAdd(runtimeClassName, (runtimeClassName) =>
+            {
+                Type implementationType = null;
+                try
+                {
+                    implementationType = FindTypeByName(runtimeClassName.AsSpan()).type;
+                }
+                catch (Exception)
+                {
+                }
+                return implementationType;
+            });
         }
 
         /// <summary>
@@ -40,7 +72,7 @@ namespace WinRT
         {
             // Assume that anonymous types are expando objects, whether declared 'dynamic' or not.
             // It may be necessary to detect otherwise and return System.Object.
-            if(runtimeClassName.StartsWith("<>f__AnonymousType".AsSpan()))
+            if(runtimeClassName.StartsWith("<>f__AnonymousType".AsSpan(), StringComparison.Ordinal))
             {
                 return (typeof(System.Dynamic.ExpandoObject), 0);
             }
@@ -101,6 +133,10 @@ namespace WinRT
             {
                 if (genericTypes != null)
                 {
+                    if(resolvedType == typeof(global::System.Nullable<>) && genericTypes[0].IsDelegate())
+                    {
+                        return typeof(ABI.System.Nullable_Delegate<>).MakeGenericType(genericTypes);
+                    }
                     resolvedType = resolvedType.MakeGenericType(genericTypes);
                 }
                 return resolvedType;
@@ -124,6 +160,7 @@ namespace WinRT
                 "Boolean" => typeof(bool),
                 "String" => typeof(string),
                 "Char" => typeof(char),
+                "Char16" => typeof(char),
                 "Single" => typeof(float),
                 "Double" => typeof(double),
                 "Guid" => typeof(Guid),
@@ -140,7 +177,7 @@ namespace WinRT
         /// <returns>Returns a tuple containing the simple type name of the type, and generic type parameters if they exist, and the index of the end of the type name in the span.</returns>
         private static (string genericTypeName, Type[] genericTypes, int remaining) ParseGenericTypeName(ReadOnlySpan<char> partialTypeName)
         {
-            int possibleEndOfSimpleTypeName = partialTypeName.IndexOfAny(new[] { ',', '>' });
+            int possibleEndOfSimpleTypeName = partialTypeName.IndexOfAny(',', '>');
             int endOfSimpleTypeName = partialTypeName.Length;
             if (possibleEndOfSimpleTypeName != -1)
             {
@@ -227,7 +264,7 @@ namespace WinRT
                     {
                         return false;
                     }
-                    builder.Append(">");
+                    builder.Append('>');
                     return true;
                 }
                 if (type == typeof(byte))
@@ -319,7 +356,7 @@ namespace WinRT
 
         private static bool TryAppendTypeName(Type type, StringBuilder builder, TypeNameGenerationFlags flags)
         {
-#if NETSTANDARD2_0
+#if !NET
             // We can't easily determine from just the type
             // if the array is an "single dimension index from zero"-array in .NET Standard 2.0,
             // so just approximate it.
@@ -332,7 +369,7 @@ namespace WinRT
                 builder.Append("Windows.Foundation.IReferenceArray`1<");
                 if (TryAppendTypeName(type.GetElementType(), builder, flags & ~TypeNameGenerationFlags.GenerateBoxedName))
                 {
-                    builder.Append(">");
+                    builder.Append('>');
                     return true;
                 }
                 return true;
@@ -343,7 +380,7 @@ namespace WinRT
                 return TryAppendSimpleTypeName(type, builder, flags);
             }
 
-            if (!Projections.IsTypeWindowsRuntimeType(type) && (flags & TypeNameGenerationFlags.NoCustomTypeName) != 0)
+            if ((flags & TypeNameGenerationFlags.NoCustomTypeName) != 0 && !Projections.IsTypeWindowsRuntimeType(type))
             {
                 return TryAppendWinRTInterfaceNameForType(type, builder, flags);
             }

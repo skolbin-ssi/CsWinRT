@@ -6,7 +6,6 @@
 *.c
 *.winmd
 *test*.xml
-build
 obj
 packages
 Debug
@@ -21,3 +20,6 @@ nuget/Microsoft.Windows.CsWinRT.Prerelease.targets
 *.binlog
 vs_buildtools.exe
 .buildtools
+src/BenchmarkDotNet.Artifacts/*
+src/Tests/AuthoringWinUITest/AuthoringWinUITest (Package)/AuthoringWinUITest (Package).assets.cache
+*.trx

@@ -3,7 +3,11 @@
   <PropertyGroup>
     <SimulateCsWinRTNugetReference>true</SimulateCsWinRTNugetReference>
   </PropertyGroup>
-  
+
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
 
+  <PropertyGroup Condition="!$(IsTargetFrameworkNet5OrGreater) AND '$(TargetFramework)' != ''">
+    <CsWinRTIIDOptimizerOptOut>true</CsWinRTIIDOptimizerOptOut>
+  </PropertyGroup>
+    
 </Project>

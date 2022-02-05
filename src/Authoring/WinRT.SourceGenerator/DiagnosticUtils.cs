@@ -82,9 +82,9 @@ namespace Generator
 
         private void CheckDeclarations()
         {
-            WinRTSyntaxReciever syntaxReciever = (WinRTSyntaxReciever)_context.SyntaxReceiver;
+            WinRTSyntaxReciever syntaxReceiver = (WinRTSyntaxReciever)_context.SyntaxReceiver;
 
-            foreach (var declaration in syntaxReciever.Declarations)
+            foreach (var declaration in syntaxReceiver.Declarations)
             {
                 var model = _context.Compilation.GetSemanticModel(declaration.SyntaxTree);
 
@@ -125,6 +125,8 @@ namespace Generator
 
                     // check types -- todo: check for !valid types
                     CheckMethods(publicMethods, classId);
+
+                    CheckInterfaces(model, @class);
                 }
                 else if (declaration is InterfaceDeclarationSyntax @interface)
                 {
@@ -151,6 +153,54 @@ namespace Generator
                     CheckStructFields(@struct);
                 }
             }
+        }
+
+        private void CheckInterfaces(SemanticModel model, ClassDeclarationSyntax @class)
+        {
+            var classId = @class.Identifier;
+            var classSymbol = model.GetDeclaredSymbol(@class);
+
+            var iWinRTObject = model.Compilation.GetTypeByMetadataName("WinRT.IWinRTObject");
+            // validate that the class correctly implements all its interfaces
+            var methods = classSymbol.GetMembers().OfType<IMethodSymbol>().ToList();
+            foreach (var iface in classSymbol.AllInterfaces)
+            {
+                if (SymbolEqualityComparer.Default.Equals(iface, iWinRTObject))
+                {
+                    continue;
+                }
+                foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
+                {
+                    var impl = classSymbol.FindImplementationForInterfaceMember(member);
+                    if (impl == null)
+                    {
+                        var explicitIfaceImpl = methods.Where(m => IsMethodImpl(m, member));
+                        if (!explicitIfaceImpl.Any())
+                        {
+                            Report(WinRTRules.UnimplementedInterface, @class.GetLocation(), classId.Text, iface.ToDisplayString(), member.ToDisplayString());
+                        }
+                    }
+                }
+            }
+        }
+
+        private bool IsMethodImpl(IMethodSymbol m, IMethodSymbol interfaceMethod)
+        {
+            if (m.Name != interfaceMethod.Name)
+            {
+                return false;
+            }
+            if (!m.Parameters.SequenceEqual(interfaceMethod.Parameters))
+            {
+                return false;
+            }
+
+            // the return type can be covariant with the interface method's return type (i.e. a sub-type)
+            if (m.ReturnType != interfaceMethod.ReturnType && !m.ReturnType.AllInterfaces.Contains(interfaceMethod.ReturnType))
+            {
+                return false;
+            }
+            return true;
         }
 
         private void IgnoreCustomTypeMappings(INamedTypeSymbol typeSymbol,
@@ -236,8 +286,8 @@ namespace Generator
         /// <param name="methodDeclarations">Collection of methods</param><param name="typeId">Containing class or interface</param>
         private void CheckMethods(IEnumerable<MethodDeclarationSyntax> methodDeclarations, SyntaxToken typeId)
         {
-            Dictionary<string, bool> methodsHasAttributeMap = new();
-            Dictionary<string, Diagnostic> overloadsWithoutAttributeMap = new Dictionary<string, Diagnostic>();
+            Dictionary<string, bool> methodsHasAttributeMap = new(StringComparer.Ordinal);
+            Dictionary<string, Diagnostic> overloadsWithoutAttributeMap = new Dictionary<string, Diagnostic>(StringComparer.Ordinal);
 
             // var methodDeclarations = interfaceDeclaration.DescendantNodes().OfType<MethodDeclarationSyntax>();
             foreach (MethodDeclarationSyntax method in methodDeclarations)
@@ -353,7 +403,7 @@ namespace Generator
         /// <returns>True iff namespace is disjoint from the assembly name</returns>
         private bool IsInvalidNamespace(INamespaceSymbol @namespace, string assemblyName)
         {
-            if (@namespace.ToString() == assemblyName)
+            if (string.CompareOrdinal(@namespace.ToString(), assemblyName) == 0)
             {
                 return false;
             }
@@ -361,14 +411,14 @@ namespace Generator
             var topLevel = @namespace;
             while (!topLevel.ContainingNamespace.IsGlobalNamespace)
             {
-                if (topLevel.ToString() == assemblyName)
+                if (string.CompareOrdinal(topLevel.ToString(), assemblyName) == 0)
                 {
                     return false;
                 }
                 topLevel = topLevel.ContainingNamespace;
             }
 
-            return topLevel.ToString() != assemblyName;
+            return string.CompareOrdinal(topLevel.ToString(), assemblyName) != 0;
         }
 
         ///<summary>Array types can only be one dimensional and not System.Array, 

@@ -1,10 +1,11 @@
-﻿using System;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
 using WinRT.Interop;
 
 #pragma warning disable 0169 // The field 'xxx' is never used
@@ -12,7 +13,13 @@ using WinRT.Interop;
 
 namespace WinRT
 {
-    public abstract class IObjectReference : IDisposable
+
+#if EMBED
+    internal
+#else
+    public
+#endif
+    abstract class IObjectReference : IDisposable
     {
         protected bool disposed;
         private readonly IntPtr _thisPtr;
@@ -20,6 +27,15 @@ namespace WinRT
         private IntPtr _referenceTrackerPtr;
 
         public IntPtr ThisPtr
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return GetThisPtrForCurrentContext();
+            }
+        }
+
+        private protected IntPtr ThisPtrFromOriginalContext
         {
             get
             {
@@ -74,12 +90,21 @@ namespace WinRT
             }
         }
 
-        protected  unsafe IUnknownVftbl VftblIUnknown
+        protected unsafe IUnknownVftbl VftblIUnknown
         {
             get
             {
                 ThrowIfDisposed();
                 return **(IUnknownVftbl**)ThisPtr;
+            }
+        }
+
+        private protected unsafe IUnknownVftbl VftblIUnknownFromOriginalContext
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return **(IUnknownVftbl**)ThisPtrFromOriginalContext;
             }
         }
 
@@ -100,18 +125,7 @@ namespace WinRT
         public ObjectReference<T> As<T>() => As<T>(GuidGenerator.GetIID(typeof(T)));
         public unsafe ObjectReference<T> As<T>(Guid iid)
         {
-            ThrowIfDisposed();
-            Marshal.ThrowExceptionForHR(VftblIUnknown.QueryInterface(ThisPtr, ref iid, out IntPtr thatPtr));
-            if (IsAggregated)
-            {
-                Marshal.Release(thatPtr);
-            }
-            AddRefFromTrackerSource();
-
-            var objRef = ObjectReference<T>.Attach(ref thatPtr);
-            objRef.IsAggregated = IsAggregated;
-            objRef.PreventReleaseOnDispose = IsAggregated;
-            objRef.ReferenceTrackerPtr = ReferenceTrackerPtr;
+            Marshal.ThrowExceptionForHR(TryAs<T>(iid, out var objRef));
             return objRef;
         }
 
@@ -133,7 +147,7 @@ namespace WinRT
                 }
             }
 
-#if NETSTANDARD2_0
+#if !NET
             return (TInterface)typeof(TInterface).GetHelperType().GetConstructor(new[] { typeof(IObjectReference) }).Invoke(new object[] { this });
 #else
             return (TInterface)(object)new WinRT.IInspectable(this);
@@ -159,6 +173,23 @@ namespace WinRT
                 objRef.IsAggregated = IsAggregated;
                 objRef.PreventReleaseOnDispose = IsAggregated;
                 objRef.ReferenceTrackerPtr = ReferenceTrackerPtr;
+            }
+            return hr;
+        }
+
+        // Used only as part of the GetInterface implementation where the
+        // result is an reference passed across the ABI and doesn't need to
+        // be tracked as an internal reference.  This is separate to handle
+        // tear off aggregate scenario where releasing an reference can end up
+        // deleting the tear off interface.
+        public virtual unsafe int TryAs(Guid iid, out IntPtr ppv)
+        {
+            ppv = IntPtr.Zero;
+            ThrowIfDisposed();
+            int hr = VftblIUnknown.QueryInterface(ThisPtr, ref iid, out IntPtr thatPtr);
+            if (hr >= 0)
+            {
+                ppv = thatPtr;
             }
             return hr;
         }
@@ -261,6 +292,12 @@ namespace WinRT
             VftblIUnknown.Release(ThisPtr);
         }
 
+        private protected unsafe void ReleaseWithoutContext()
+        {
+            ReleaseFromTrackerSource();
+            VftblIUnknownFromOriginalContext.Release(ThisPtrFromOriginalContext);
+        }
+
         internal unsafe bool IsReferenceToManagedObject
         {
             get
@@ -308,9 +345,19 @@ namespace WinRT
                 ReferenceTracker.IUnknownVftbl.Release(ReferenceTrackerPtr);
             }
         }
+
+        private protected virtual IntPtr GetThisPtrForCurrentContext()
+        {
+            return ThisPtrFromOriginalContext;
+        }
     }
 
-    public class ObjectReference<T> : IObjectReference
+#if EMBED
+    internal
+#else
+    public
+#endif
+    class ObjectReference<T> : IObjectReference
     {
         private readonly T _vftbl;
         public T Vftbl
@@ -318,7 +365,7 @@ namespace WinRT
             get
             {
                 ThrowIfDisposed();
-                return _vftbl;
+                return GetVftblForCurrentContext();
             }
         }
 
@@ -376,7 +423,7 @@ namespace WinRT
             // Since it is a JIT time constant, this function will be branchless on .NET 5.
             // On .NET Standard 2.0, the IsReferenceOrContainsReferences method does not exist,
             // so we instead fall back to typeof(T).IsGenericType, which sadly is not a JIT-time constant.
-#if NETSTANDARD2_0
+#if !NET
             if (typeof(T).IsGenericType)
 #else
             if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
@@ -390,36 +437,132 @@ namespace WinRT
             }
             return vftblT;
         }
+
+        private protected virtual T GetVftblForCurrentContext()
+        {
+            return _vftbl;
+        }
     }
 
-    internal class ObjectReferenceWithContext<T> : ObjectReference<T>
+    internal sealed class ObjectReferenceWithContext<T> : ObjectReference<T>
     {
-        private static readonly Guid IID_ICallbackWithNoReentrancyToApplicationSTA = Guid.Parse("0A299774-3E4E-FC42-1D9D-72CEE105CA57");
         private readonly IntPtr _contextCallbackPtr;
+        private readonly IntPtr _contextToken;
+        private readonly Lazy<ConcurrentDictionary<IntPtr, ObjectReference<T>>> _cachedContext;
+        private readonly Lazy<AgileReference> _agileReference;
+        private readonly Guid _iid;
 
-        internal ObjectReferenceWithContext(IntPtr thisPtr, IntPtr contextCallbackPtr)
+        internal ObjectReferenceWithContext(IntPtr thisPtr, IntPtr contextCallbackPtr, IntPtr contextToken)
             :base(thisPtr)
         {
             _contextCallbackPtr = contextCallbackPtr;
+            _contextToken = contextToken;
+            _cachedContext = new Lazy<ConcurrentDictionary<IntPtr, ObjectReference<T>>>();
+            _agileReference = new Lazy<AgileReference>(() => {
+                AgileReference agileReference = null;
+                Context.CallInContext(_contextCallbackPtr, _contextToken, InitAgileReference, null);
+                return agileReference;
+
+                void InitAgileReference()
+                {
+                    agileReference = new AgileReference(this);
+                }
+            });
+        }
+
+        internal ObjectReferenceWithContext(IntPtr thisPtr, IntPtr contextCallbackPtr, IntPtr contextToken, Guid iid)
+            : base(thisPtr)
+        {
+            _contextCallbackPtr = contextCallbackPtr;
+            _contextToken = contextToken;
+            _cachedContext = new Lazy<ConcurrentDictionary<IntPtr, ObjectReference<T>>>();
+            _agileReference = new Lazy<AgileReference>(() => {
+                AgileReference agileReference = null;
+                Context.CallInContext(_contextCallbackPtr, _contextToken, InitAgileReference, null);
+                return agileReference;
+
+                void InitAgileReference()
+                {
+                    agileReference = new AgileReference(this);
+                }
+            });
+
+            _iid = iid;
+        }
+
+        private protected override IntPtr GetThisPtrForCurrentContext()
+        {
+            ObjectReference<T> cachedObjRef = GetCurrentContext();
+            if (cachedObjRef == null)
+            {
+                return base.GetThisPtrForCurrentContext();
+            }
+
+            return cachedObjRef.ThisPtr;
+        }
+
+        private protected override T GetVftblForCurrentContext()
+        {
+            ObjectReference<T> cachedObjRef = GetCurrentContext();
+            if (cachedObjRef == null)
+            {
+                return base.GetVftblForCurrentContext();
+            }
+
+            return cachedObjRef.Vftbl;
+        }
+
+        // Gets the object reference with respect to the current context.
+        // If we are already on the same context as when this object reference was
+        // created or failed to switch context, null is returned as the current base
+        // object reference should be used.
+        private ObjectReference<T> GetCurrentContext()
+        {
+            IntPtr currentContext = Context.GetContextToken();
+            if (_contextCallbackPtr == IntPtr.Zero || currentContext == _contextToken)
+            {
+                return null;
+            }
+
+            return _cachedContext.Value.GetOrAdd(currentContext, CreateForCurrentContext);
+
+            ObjectReference<T> CreateForCurrentContext(IntPtr _)
+            {
+                var agileReference = _agileReference.Value;
+                // We may fail to switch context and thereby not get an agile reference.
+                // In these cases, fallback to using the current context.
+                if (agileReference == null)
+                {
+                    return null;
+                }
+
+                using var referenceInContext = agileReference.Get();
+                if (_iid == Guid.Empty)
+                {
+                    return referenceInContext.TryAs<T>(out var objRef) >= 0 ? objRef : null;
+                }
+                else
+                {
+                    return referenceInContext.TryAs<T>(_iid, out var objRef) >= 0 ? objRef : null;
+                }
+            }
         }
 
         protected override unsafe void Release()
         {
-            ComCallData data = default;
-            IntPtr contextCallbackPtr = _contextCallbackPtr;
-
-            var contextCallback = new ABI.WinRT.Interop.IContextCallback(ObjectReference<ABI.WinRT.Interop.IContextCallback.Vftbl>.Attach(ref contextCallbackPtr));
-
-            contextCallback.ContextCallback(_ =>
+            if (_cachedContext.IsValueCreated)
             {
-                base.Release();
-                return 0;
-            }, &data, IID_ICallbackWithNoReentrancyToApplicationSTA, 5);
+                _cachedContext.Value.Clear();
+            }
+
+            Context.CallInContext(_contextCallbackPtr, _contextToken, base.Release, ReleaseWithoutContext);
+            Context.DisposeContextCallback(_contextCallbackPtr);
         }
 
         public override unsafe int TryAs<U>(Guid iid, out ObjectReference<U> objRef)
         {
             objRef = null;
+
             int hr = VftblIUnknown.QueryInterface(ThisPtr, ref iid, out IntPtr thatPtr);
             if (hr >= 0)
             {
@@ -429,16 +572,14 @@ namespace WinRT
                 }
                 AddRefFromTrackerSource();
 
-                using (var contextCallbackReference = ObjectReference<ABI.WinRT.Interop.IContextCallback.Vftbl>.FromAbi(_contextCallbackPtr))
+                objRef = new ObjectReferenceWithContext<U>(thatPtr, Context.GetContextCallback(), Context.GetContextToken(), iid)
                 {
-                    objRef = new ObjectReferenceWithContext<U>(thatPtr, contextCallbackReference.GetRef())
-                    {
-                        IsAggregated = IsAggregated,
-                        PreventReleaseOnDispose = IsAggregated,
-                        ReferenceTrackerPtr = ReferenceTrackerPtr
-                    };
-                }
+                    IsAggregated = IsAggregated,
+                    PreventReleaseOnDispose = IsAggregated,
+                    ReferenceTrackerPtr = ReferenceTrackerPtr
+                };
             }
+
             return hr;
         }
     }

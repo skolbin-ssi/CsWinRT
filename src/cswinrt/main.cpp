@@ -4,6 +4,7 @@
 #include "helpers.h"
 #include "type_writers.h"
 #include "code_writers.h"
+#include <concurrent_unordered_map.h>
 
 namespace cswinrt
 {
@@ -31,9 +32,10 @@ namespace cswinrt
         { "output", 0, 1, "<path>", "Location of generated projection" },
         { "include", 0, option::no_max, "<prefix>", "One or more prefixes to include in projection" },
         { "exclude", 0, option::no_max, "<prefix>", "One or more prefixes to exclude from projection" },
-        { "target", 0, 1, "<net5.0|netstandard2.0>", "Target TFM for projection. Omit for compatibility with newest TFM (net5.0)." },
+        { "target", 0, 1, "<net6.0|net5.0|netstandard2.0>", "Target TFM for projection. Omit for compatibility with newest TFM (net5.0)." },
         { "component", 0, 0, {}, "Generate component projection." },
         { "verbose", 0, 0, {}, "Show detailed progress information" },
+        { "embedded", 0, 0, {}, "Generate the projection as internal."},
         { "help", 0, option::no_max, {}, "Show detailed help" },
         { "?", 0, option::no_max, {}, {} },
     };
@@ -83,14 +85,16 @@ Where <spec> is one or more of:
             throw usage_exception{};
         }
 
+
         settings.verbose = args.exists("verbose");
         auto target = args.value("target");
-        if (!target.empty() && target != "netstandard2.0" && !starts_with(target, "net5.0"))
+        if (!target.empty() && target != "netstandard2.0" && !starts_with(target, "net5.0") && !starts_with(target, "net6.0"))
         {
             throw usage_exception();
         }
         settings.netstandard_compat = target == "netstandard2.0";
         settings.component = args.exists("component");
+        settings.embedded = args.exists("embedded");
         settings.input = args.files("input", database::is_database);
 
         for (auto && include : args.values("include"))
@@ -119,6 +123,7 @@ Where <spec> is one or more of:
         int result{};
         writer w;
 
+        /* Special case the usage exceptions to print CLI options */
         try
         {
             auto start = get_start_time();
@@ -165,16 +170,19 @@ Where <spec> is one or more of:
 
             task_group group;
 
+            concurrency::concurrent_unordered_map<std::string, std::string> typeNameToDefinitionMap;
             bool projectionFileWritten = false;
             for (auto&& ns_members : c.namespaces())
             {
-                group.add([&ns_members, &componentActivatableClasses, &projectionFileWritten]
+                group.add([&ns_members, &componentActivatableClasses, &projectionFileWritten, &typeNameToDefinitionMap]
                 {
                     auto&& [ns, members] = ns_members;
                     std::string_view currentType = "";
                     try
                     {
                         writer w(ns);
+                        writer helperWriter("WinRT");
+                        
                         w.write_begin();
                         bool written = false;
                         bool requires_abi = false;
@@ -188,6 +196,7 @@ Where <spec> is one or more of:
                                 continue;
                             }
                             auto guard{ w.push_generic_params(type.GenericParam()) };
+                            auto guard1{ helperWriter.push_generic_params(type.GenericParam()) };
 
                             bool type_requires_abi = true;
                             switch (get_category(type))
@@ -212,6 +221,7 @@ Where <spec> is one or more of:
                                         write_factory_class(w, type);
                                     }
                                 }
+                                write_temp_class_event_source_subclass(helperWriter, type, typeNameToDefinitionMap);
                                 break;
                             case category::delegate_type:
                                 write_delegate(w, type);
@@ -222,6 +232,7 @@ Where <spec> is one or more of:
                                 break;
                             case category::interface_type:
                                 write_interface(w, type);
+                                write_temp_interface_event_source_subclass(helperWriter, type, typeNameToDefinitionMap);
                                 break;
                             case category::struct_type:
                                 if (is_api_contract_type(type))
@@ -269,7 +280,8 @@ Where <spec> is one or more of:
                                             write_abi_interface_netstandard(w, type);
                                         }
                                         else
-                                        {
+                                        {   
+                                            write_static_abi_classes(w, type);
                                             write_abi_interface(w, type);
                                         }
                                         break;
@@ -308,13 +320,21 @@ Where <spec> is one or more of:
                     }
                 });
             }
-
+            
             if(settings.component)
             {
                 group.add([&componentActivatableClasses, &projectionFileWritten]
                 {
                     writer wm;
-                    wm.write("// This file was generated by cswinrt.exe version %", VERSION_STRING);
+                    wm.write(R"(//------------------------------------------------------------------------------
+// <auto-generated>
+//     This file was generated by cswinrt.exe version %
+//
+//     Changes to this file may cause incorrect behavior and will be lost if
+//     the code is regenerated.
+// </auto-generated>
+//------------------------------------------------------------------------------
+)", VERSION_STRING);
                     write_module_activation_factory(wm, componentActivatableClasses);
                     wm.flush_to_file(settings.output_folder / (std::string("WinRT_Module") + ".cs"));
                     projectionFileWritten = true;
@@ -322,13 +342,42 @@ Where <spec> is one or more of:
             }
 
             group.get();
+            writer eventHelperWriter("WinRT");
+            eventHelperWriter.write(R"(//------------------------------------------------------------------------------
+// <auto-generated>
+//     This file was generated by cswinrt.exe version %
+//
+//     Changes to this file may cause incorrect behavior and will be lost if
+//     the code is regenerated.
+// </auto-generated>
+//------------------------------------------------------------------------------
+)", VERSION_STRING);
+            eventHelperWriter.write("namespace WinRT\n{\n%\n}", bind([&](writer& w) {
+                for (auto&& [key, value] : typeNameToDefinitionMap)
+                {
+                    w.write("%", value);
+                }
+            }));
+            eventHelperWriter.flush_to_file(settings.output_folder / "WinRTEventHelpers.cs");
 
             if (projectionFileWritten)
             {
                 for (auto&& string : strings::base)
                 {
+                    if (std::string(string.name) == "ComInteropHelpers" && !settings.filter.includes("Windows"))
+                    {
+                        continue;
+                    }
                     writer ws;
-                    ws.write("// This file was generated by cswinrt.exe version %", VERSION_STRING);
+                    ws.write(R"(//------------------------------------------------------------------------------
+// <auto-generated>
+//     This file was generated by cswinrt.exe version %
+//
+//     Changes to this file may cause incorrect behavior and will be lost if
+//     the code is regenerated.
+// </auto-generated>
+//------------------------------------------------------------------------------
+)", VERSION_STRING);
                     ws.write(string.value);
                     ws.flush_to_file(settings.output_folder / (std::string(string.name) + ".cs"));
                 }
@@ -341,6 +390,7 @@ Where <spec> is one or more of:
         }
         catch (usage_exception const&)
         {
+            result = 1;
             print_usage(w);
         }
         catch (std::exception const& e)

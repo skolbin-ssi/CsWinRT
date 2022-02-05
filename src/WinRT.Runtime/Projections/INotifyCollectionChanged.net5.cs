@@ -1,17 +1,22 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Text;
 using WinRT;
-using WinRT.Interop;
 
 namespace ABI.System.Collections.Specialized
 {
     [DynamicInterfaceCastableImplementation]
     [EditorBrowsable(EditorBrowsableState.Never)]
     [Guid("530155E1-28A5-5693-87CE-30724D95A06D")]
-    public unsafe interface INotifyCollectionChanged : global::System.Collections.Specialized.INotifyCollectionChanged
+#if EMBED
+    internal
+#else
+    public
+#endif
+    unsafe interface INotifyCollectionChanged : global::System.Collections.Specialized.INotifyCollectionChanged
     {
         [Guid("530155E1-28A5-5693-87CE-30724D95A06D")]
         public struct Vftbl
@@ -41,8 +46,16 @@ namespace ABI.System.Collections.Specialized
                 AbiToProjectionVftablePtr = (IntPtr)nativeVftbl;
             }
 
-            private static global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Collections.Specialized.INotifyCollectionChanged, global::WinRT.EventRegistrationTokenTable<global::System.Collections.Specialized.NotifyCollectionChangedEventHandler>> _CollectionChanged_TokenTables = new global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Collections.Specialized.INotifyCollectionChanged, global::WinRT.EventRegistrationTokenTable<global::System.Collections.Specialized.NotifyCollectionChangedEventHandler>>();
-            
+            private volatile static global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Collections.Specialized.INotifyCollectionChanged, global::WinRT.EventRegistrationTokenTable<global::System.Collections.Specialized.NotifyCollectionChangedEventHandler>> _collectionChanged_TokenTables;
+
+            private static global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Collections.Specialized.INotifyCollectionChanged, global::WinRT.EventRegistrationTokenTable<global::System.Collections.Specialized.NotifyCollectionChangedEventHandler>> MakeConditionalWeakTable()
+            {
+                global::System.Threading.Interlocked.CompareExchange(ref _collectionChanged_TokenTables, new(), null);
+                return _collectionChanged_TokenTables;
+            }
+
+            private static global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.Collections.Specialized.INotifyCollectionChanged, global::WinRT.EventRegistrationTokenTable<global::System.Collections.Specialized.NotifyCollectionChangedEventHandler>> _CollectionChanged_TokenTables => _collectionChanged_TokenTables ?? MakeConditionalWeakTable();
+
             [UnmanagedCallersOnly]
             private static unsafe int Do_Abi_add_CollectionChanged_0(IntPtr thisPtr, IntPtr handler, global::WinRT.EventRegistrationToken* token)
             {
@@ -81,12 +94,12 @@ namespace ABI.System.Collections.Specialized
         }
         internal static ObjectReference<Vftbl> FromAbi(IntPtr thisPtr) => ObjectReference<Vftbl>.FromAbi(thisPtr);
 
-        private static EventSource<global::System.Collections.Specialized.NotifyCollectionChangedEventHandler> _CollectionChanged(IWinRTObject _this)
+        private static NotifyCollectionChangedEventSource _CollectionChanged(IWinRTObject _this)
         {
             var _obj = ((ObjectReference<Vftbl>)((IWinRTObject)_this).GetObjectReferenceForType(typeof(global::System.Collections.Specialized.INotifyCollectionChanged).TypeHandle));
             
-            return (EventSource<global::System.Collections.Specialized.NotifyCollectionChangedEventHandler>)_this.GetOrCreateTypeHelperData(typeof(global::System.Collections.Specialized.INotifyCollectionChanged).TypeHandle,
-                () => new EventSource<global::System.Collections.Specialized.NotifyCollectionChangedEventHandler>(_obj, _obj.Vftbl.add_CollectionChanged_0, _obj.Vftbl.remove_CollectionChanged_1));
+            return (NotifyCollectionChangedEventSource)_this.GetOrCreateTypeHelperData(typeof(global::System.Collections.Specialized.INotifyCollectionChanged).TypeHandle,
+                () => new NotifyCollectionChangedEventSource(_obj, _obj.Vftbl.add_CollectionChanged_0, _obj.Vftbl.remove_CollectionChanged_1));
         }
 
         event global::System.Collections.Specialized.NotifyCollectionChangedEventHandler global::System.Collections.Specialized.INotifyCollectionChanged.CollectionChanged
@@ -94,6 +107,5 @@ namespace ABI.System.Collections.Specialized
             add => _CollectionChanged((IWinRTObject)this).Subscribe(value);
             remove => _CollectionChanged((IWinRTObject)this).Unsubscribe(value);
         }
-
     }
 }

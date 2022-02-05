@@ -1,7 +1,8 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Text;
 using WinRT;
 using WinRT.Interop;
 
@@ -9,7 +10,12 @@ namespace ABI.System.ComponentModel
 {
     [global::WinRT.ObjectReferenceWrapper(nameof(_obj)), global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
     [Guid("90B17601-B065-586E-83D9-9ADC3A695284")]
-    public unsafe class INotifyPropertyChanged : global::System.ComponentModel.INotifyPropertyChanged
+#if EMBED
+    internal
+#else
+    public
+#endif
+    unsafe class INotifyPropertyChanged : global::System.ComponentModel.INotifyPropertyChanged
     {
         [Guid("90B17601-B065-586E-83D9-9ADC3A695284")]
         [StructLayout(LayoutKind.Sequential)]
@@ -42,7 +48,13 @@ namespace ABI.System.ComponentModel
                 AbiToProjectionVftablePtr = (IntPtr)nativeVftbl;
             }
 
-            private static global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.ComponentModel.INotifyPropertyChanged, global::WinRT.EventRegistrationTokenTable<global::System.ComponentModel.PropertyChangedEventHandler>> _PropertyChanged_TokenTables = new global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.ComponentModel.INotifyPropertyChanged, global::WinRT.EventRegistrationTokenTable<global::System.ComponentModel.PropertyChangedEventHandler>>();
+            private volatile static global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.ComponentModel.INotifyPropertyChanged, global::WinRT.EventRegistrationTokenTable<global::System.ComponentModel.PropertyChangedEventHandler>> _PropertyChanged_TokenTablesLazy = null;
+            private static global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.ComponentModel.INotifyPropertyChanged, global::WinRT.EventRegistrationTokenTable<global::System.ComponentModel.PropertyChangedEventHandler>> MakeConditionalWeakTable()
+            {
+                global::System.Threading.Interlocked.CompareExchange(ref _PropertyChanged_TokenTablesLazy, new(), null);
+                return _PropertyChanged_TokenTablesLazy;
+            }
+            private static global::System.Runtime.CompilerServices.ConditionalWeakTable<global::System.ComponentModel.INotifyPropertyChanged, global::WinRT.EventRegistrationTokenTable<global::System.ComponentModel.PropertyChangedEventHandler>> _PropertyChanged_TokenTables => _PropertyChanged_TokenTablesLazy ?? MakeConditionalWeakTable();
 
             private static unsafe int Do_Abi_add_PropertyChanged_0(IntPtr thisPtr, IntPtr handler, out global::WinRT.EventRegistrationToken token)
             {
@@ -99,7 +111,7 @@ namespace ABI.System.ComponentModel
             _obj = obj;
 
             _PropertyChanged =
-                new EventSource<global::System.ComponentModel.PropertyChangedEventHandler>(_obj,
+                new PropertyChangedEventSource(_obj,
                 _obj.Vftbl.add_PropertyChanged_0,
                 _obj.Vftbl.remove_PropertyChanged_1);
         }
@@ -111,6 +123,6 @@ namespace ABI.System.ComponentModel
             remove => _PropertyChanged.Unsubscribe(value);
         }
 
-        private EventSource<global::System.ComponentModel.PropertyChangedEventHandler> _PropertyChanged;
+        private PropertyChangedEventSource _PropertyChanged;
     }
 }

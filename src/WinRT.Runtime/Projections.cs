@@ -1,5 +1,9 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -12,14 +16,19 @@ using Windows.Foundation.Collections;
 
 namespace WinRT
 {
-    public static class Projections
+#if EMBED
+    internal
+#else 
+    public
+#endif
+    static class Projections
     {
         private static readonly ReaderWriterLockSlim rwlock = new ReaderWriterLockSlim();
         private static readonly Dictionary<Type, Type> CustomTypeToHelperTypeMappings = new Dictionary<Type, Type>();
         private static readonly Dictionary<Type, Type> CustomAbiTypeToTypeMappings = new Dictionary<Type, Type>();
-        private static readonly Dictionary<string, Type> CustomAbiTypeNameToTypeMappings = new Dictionary<string, Type>();
+        private static readonly Dictionary<string, Type> CustomAbiTypeNameToTypeMappings = new Dictionary<string, Type>(StringComparer.Ordinal);
         private static readonly Dictionary<Type, string> CustomTypeToAbiTypeNameMappings = new Dictionary<Type, string>();
-        private static readonly HashSet<string> ProjectedRuntimeClassNames = new HashSet<string>();
+        private static readonly HashSet<string> ProjectedRuntimeClassNames = new HashSet<string>(StringComparer.Ordinal);
         private static readonly HashSet<Type> ProjectedCustomTypeRuntimeClasses = new HashSet<Type>();
 
         static Projections()
@@ -30,6 +39,22 @@ namespace WinRT
             RegisterCustomAbiTypeMappingNoLock(typeof(EventRegistrationToken), typeof(ABI.WinRT.EventRegistrationToken), "Windows.Foundation.EventRegistrationToken");
             
             RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<>), typeof(ABI.System.Nullable<>), "Windows.Foundation.IReference`1");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<int>), typeof(ABI.System.Nullable_int), "Windows.Foundation.IReference`1<Int32>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<byte>), typeof(ABI.System.Nullable_byte), "Windows.Foundation.IReference`1<UInt8>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<sbyte>), typeof(ABI.System.Nullable_sbyte), "Windows.Foundation.IReference`1<Int8>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<short>), typeof(ABI.System.Nullable_short), "Windows.Foundation.IReference`1<Int16>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<ushort>), typeof(ABI.System.Nullable_ushort), "Windows.Foundation.IReference`1<UInt16>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<uint>), typeof(ABI.System.Nullable_uint), "Windows.Foundation.IReference`1<UInt32>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<long>), typeof(ABI.System.Nullable_long), "Windows.Foundation.IReference`1<Int64>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<ulong>), typeof(ABI.System.Nullable_ulong), "Windows.Foundation.IReference`1<UInt64>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<float>), typeof(ABI.System.Nullable_float), "Windows.Foundation.IReference`1<Single>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<double>), typeof(ABI.System.Nullable_double), "Windows.Foundation.IReference`1<Double>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<char>), typeof(ABI.System.Nullable_char), "Windows.Foundation.IReference`1<Char16>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<bool>), typeof(ABI.System.Nullable_bool), "Windows.Foundation.IReference`1<Boolean>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<Guid>), typeof(ABI.System.Nullable_guid), "Windows.Foundation.IReference`1<Guid>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<DateTimeOffset>), typeof(ABI.System.Nullable_DateTimeOffset), "Windows.Foundation.IReference`1<Windows.Foundation.DateTime>");
+            RegisterCustomAbiTypeMappingNoLock(typeof(Nullable<TimeSpan>), typeof(ABI.System.Nullable_TimeSpan), "Windows.Foundation.IReference`1<TimeSpan>");
+
             RegisterCustomAbiTypeMappingNoLock(typeof(DateTimeOffset), typeof(ABI.System.DateTimeOffset), "Windows.Foundation.DateTime");
             RegisterCustomAbiTypeMappingNoLock(typeof(Exception), typeof(ABI.System.Exception), "Windows.Foundation.HResult");
             RegisterCustomAbiTypeMappingNoLock(typeof(TimeSpan), typeof(ABI.System.TimeSpan), "Windows.Foundation.TimeSpan");
@@ -115,6 +140,11 @@ namespace WinRT
 
                 if (publicType.IsGenericType)
                 {
+                    if (CustomTypeToHelperTypeMappings.TryGetValue(publicType, out Type specializedAbiType))
+                    {
+                        return specializedAbiType;
+                    }
+
                     return CustomTypeToHelperTypeMappings.TryGetValue(publicType.GetGenericTypeDefinition(), out Type abiTypeDefinition)
                         ? abiTypeDefinition.MakeGenericType(publicType.GetGenericArguments())
                         : null;
@@ -134,6 +164,11 @@ namespace WinRT
             {
                 if (abiType.IsGenericType)
                 {
+                    if (CustomAbiTypeToTypeMappings.TryGetValue(abiType, out Type specializedPublicType))
+                    {
+                        return specializedPublicType;
+                    }
+
                     return CustomAbiTypeToTypeMappings.TryGetValue(abiType.GetGenericTypeDefinition(), out Type publicTypeDefinition)
                         ? publicTypeDefinition.MakeGenericType(abiType.GetGenericArguments())
                         : null;
@@ -172,14 +207,18 @@ namespace WinRT
             }
         }
 
+        private readonly static ConcurrentDictionary<Type, bool> IsTypeWindowsRuntimeTypeCache = new ConcurrentDictionary<Type, bool>();
         public static bool IsTypeWindowsRuntimeType(Type type)
         {
-            Type typeToTest = type;
-            if (typeToTest.IsArray)
+            return IsTypeWindowsRuntimeTypeCache.GetOrAdd(type, (type) =>
             {
-                typeToTest = typeToTest.GetElementType();
-            }
-            return IsTypeWindowsRuntimeTypeNoArray(typeToTest);
+                Type typeToTest = type;
+                if (typeToTest.IsArray)
+                {
+                    typeToTest = typeToTest.GetElementType();
+                }
+                return IsTypeWindowsRuntimeTypeNoArray(typeToTest);
+            });
         }
 
         private static bool IsTypeWindowsRuntimeTypeNoArray(Type type)
@@ -397,7 +436,7 @@ namespace WinRT
             Type projectedType = typeof(T);
             if (projectedType == typeof(object))
             {
-                if (objectReference.TryAs<IInspectable.Vftbl>(out var inspectablePtr) == 0)
+                if (objectReference.TryAs<IInspectable.Vftbl>(IInspectable.IID, out var inspectablePtr) == 0)
                 {
                     rwlock.EnterReadLock();
                     try
