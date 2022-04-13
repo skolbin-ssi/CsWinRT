@@ -64,6 +64,8 @@ namespace System.Collections.Generic
             this._inner = _inner;
         }
 
+        public static IListImpl<T> CreateRcw(IInspectable obj) => new(obj.ObjRef);
+
         public T this[int index] 
         {
             get => ABI.System.Collections.Generic.IListMethods<T>.Indexer_Get(iListObjRef, index);
@@ -162,7 +164,7 @@ namespace ABI.System.Collections.Generic
             uint size = IVectorMethods<T>.get_Size(obj);
             if (((uint)int.MaxValue) < size)
             {
-                throw new InvalidOperationException(ErrorStrings.InvalidOperation_CollectionBackingListTooLarge);
+                throw new InvalidOperationException(WinRTRuntimeErrorStrings.InvalidOperation_CollectionBackingListTooLarge);
             }
 
             return (int)size;
@@ -188,10 +190,10 @@ namespace ABI.System.Collections.Generic
                 throw new ArgumentOutOfRangeException(nameof(arrayIndex));
 
             if (array.Length <= arrayIndex && get_Count(obj) > 0)
-                throw new ArgumentException(ErrorStrings.Argument_IndexOutOfArrayBounds);
+                throw new ArgumentException(WinRTRuntimeErrorStrings.Argument_IndexOutOfArrayBounds);
 
             if (array.Length - arrayIndex < get_Count(obj))
-                throw new ArgumentException(ErrorStrings.Argument_InsufficientSpaceToCopyCollection);
+                throw new ArgumentException(WinRTRuntimeErrorStrings.Argument_InsufficientSpaceToCopyCollection);
 
 
             int count = get_Count(obj);
@@ -211,7 +213,7 @@ namespace ABI.System.Collections.Generic
 
             if (((uint)int.MaxValue) < index)
             {
-                throw new InvalidOperationException(ErrorStrings.InvalidOperation_CollectionBackingListTooLarge);
+                throw new InvalidOperationException(WinRTRuntimeErrorStrings.InvalidOperation_CollectionBackingListTooLarge);
             }
 
             RemoveAtHelper(obj, index);
@@ -242,7 +244,7 @@ namespace ABI.System.Collections.Generic
 
             if (((uint)int.MaxValue) < index)
             {
-                throw new InvalidOperationException(ErrorStrings.InvalidOperation_CollectionBackingListTooLarge);
+                throw new InvalidOperationException(WinRTRuntimeErrorStrings.InvalidOperation_CollectionBackingListTooLarge);
             }
 
             return (int)index;
@@ -386,7 +388,7 @@ namespace ABI.System.Collections.Generic
             var __params = new object[] { ThisPtr, null, null, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[1] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.IndexOf_3.DynamicInvokeAbi(__params);
                 index = (uint)__params[2];
@@ -406,7 +408,7 @@ namespace ABI.System.Collections.Generic
             var __params = new object[] { ThisPtr, index, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[2] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.SetAt_4.DynamicInvokeAbi(__params);
             }
@@ -424,7 +426,7 @@ namespace ABI.System.Collections.Generic
             var __params = new object[] { ThisPtr, index, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[2] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.InsertAt_5.DynamicInvokeAbi(__params);
             }
@@ -449,7 +451,7 @@ namespace ABI.System.Collections.Generic
             var __params = new object[] { ThisPtr, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[1] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.Append_7.DynamicInvokeAbi(__params);
             }
@@ -522,11 +524,14 @@ namespace ABI.System.Collections.Generic
         public static IObjectReference CreateMarshaler(global::System.Collections.Generic.IList<T> obj) =>
             obj is null ? null : ComWrappersSupport.CreateCCWForObject<Vftbl>(obj, PIID);
 
+        public static ObjectReferenceValue CreateMarshaler2(global::System.Collections.Generic.IList<T> obj) => 
+            ComWrappersSupport.CreateCCWForObjectForMarshaling(obj, PIID);
+
         public static IntPtr GetAbi(IObjectReference objRef) =>
             objRef?.ThisPtr ?? IntPtr.Zero;
 
         public static IntPtr FromManaged(global::System.Collections.Generic.IList<T> value) =>
-            (value is null) ? IntPtr.Zero : CreateMarshaler(value).GetRef();
+            (value is null) ? IntPtr.Zero : CreateMarshaler2(value).Detach();
 
         public static void DisposeMarshaler(IObjectReference objRef) => objRef?.Dispose();
 
@@ -549,7 +554,7 @@ namespace ABI.System.Collections.Generic
                 // that Size > int.MaxValue:
                 if (((uint)int.MaxValue) <= index || index >= (uint)limit)
                 {
-                    Exception e = new ArgumentOutOfRangeException(nameof(index), ErrorStrings.ArgumentOutOfRange_IndexLargerThanMaxValue);
+                    Exception e = new ArgumentOutOfRangeException(nameof(index), WinRTRuntimeErrorStrings.ArgumentOutOfRange_IndexLargerThanMaxValue);
                     e.SetHResult(ExceptionHelpers.E_BOUNDS);
                     throw e;
                 }
@@ -565,7 +570,7 @@ namespace ABI.System.Collections.Generic
                 }
                 catch (ArgumentOutOfRangeException ex)
                 {
-                    throw ex.GetExceptionForHR(ExceptionHelpers.E_BOUNDS, ErrorStrings.ArgumentOutOfRange_Index);
+                    throw ex.GetExceptionForHR(ExceptionHelpers.E_BOUNDS, WinRTRuntimeErrorStrings.ArgumentOutOfRange_Index);
                 }
             }
 
@@ -606,7 +611,7 @@ namespace ABI.System.Collections.Generic
                 }
                 catch (ArgumentOutOfRangeException ex)
                 {
-                    throw ex.GetExceptionForHR(ExceptionHelpers.E_BOUNDS, ErrorStrings.ArgumentOutOfRange_Index);
+                    throw ex.GetExceptionForHR(ExceptionHelpers.E_BOUNDS, WinRTRuntimeErrorStrings.ArgumentOutOfRange_Index);
                 }
             }
 
@@ -653,7 +658,7 @@ namespace ABI.System.Collections.Generic
             {
                 if (_list.Count == 0)
                 {
-                    Exception e = new InvalidOperationException(ErrorStrings.InvalidOperation_CannotRemoveLastFromEmptyCollection);
+                    Exception e = new InvalidOperationException(WinRTRuntimeErrorStrings.InvalidOperation_CannotRemoveLastFromEmptyCollection);
                     e.SetHResult(ExceptionHelpers.E_BOUNDS);
                     throw e;
                 }
@@ -1059,7 +1064,7 @@ namespace ABI.System.Collections.Generic
             var __params = new object[] { ThisPtr, null, null, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[1] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.IndexOf_3.DynamicInvokeAbi(__params);
                 index = (uint)__params[2];
@@ -1079,7 +1084,7 @@ namespace ABI.System.Collections.Generic
             var __params = new object[] { ThisPtr, index, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[2] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.SetAt_4.DynamicInvokeAbi(__params);
             }
@@ -1097,7 +1102,7 @@ namespace ABI.System.Collections.Generic
             var __params = new object[] { ThisPtr, index, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[2] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.InsertAt_5.DynamicInvokeAbi(__params);
             }
@@ -1122,7 +1127,7 @@ namespace ABI.System.Collections.Generic
             var __params = new object[] { ThisPtr, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[1] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.Append_7.DynamicInvokeAbi(__params);
             }

@@ -1085,6 +1085,120 @@ namespace UnitTest
             Box_type(DateTimeOffset.Now, Tests.Box17);
         }
 
+        [Fact]
+        public void Box_LongArray()
+        {
+            long[] arr = new long[] { 2, 4, 6 };
+            Box_type(arr, Tests.Box18);
+
+            long[] arr2 = new long[] { 2, 4, 6 };
+            Box_type(arr2, Tests.Box18);
+            Box_type(arr2, Tests.Box18);
+
+            long[] arr3 = new long[0];
+            Box_type(arr3, Tests.Box18);
+
+            long[] arr4 = new long[0];
+            Box_type(arr4, Tests.Box18);
+        }
+
+        [Fact]
+        public void Box_BoolArray()
+        {
+            bool[] arr = new bool[] { true, false, true };
+            Box_type(arr, Tests.Box19);
+
+            bool[] arr2 = new bool[] { true, false, true };
+            Box_type(arr2, Tests.Box19);
+            Box_type(arr2, Tests.Box19);
+
+            bool[] arr3 = new bool[0];
+            Box_type(arr3, Tests.Box19);
+
+            bool[] arr4 = new bool[0];
+            Box_type(arr4, Tests.Box19);
+        }
+
+        [Fact]
+        public void Box_StringArray()
+        {
+            string[] arr = new string[] { "one", "two", "three" };
+            Box_type(arr, Tests.Box20);
+
+            string[] arr2 = new string[] { "four", "five", "six" };
+            Box_type(arr2, Tests.Box20);
+            Box_type(arr2, Tests.Box20);
+
+            string[] arr3 = new string[0];
+            Box_type(arr3, Tests.Box20);
+
+            string[] arr4 = new string[0];
+            Box_type(arr4, Tests.Box20);
+        }
+
+        [Fact]
+        public void Box_TimeSpanArray()
+        {
+            TimeSpan[] arr = new TimeSpan[] { TimeSpan.FromMilliseconds(4), TimeSpan.FromMilliseconds(5), TimeSpan.FromMilliseconds(6) };
+            Box_type(arr, Tests.Box21);
+
+            TimeSpan[] arr2 = new TimeSpan[] { TimeSpan.FromMilliseconds(4), TimeSpan.FromMilliseconds(5), TimeSpan.FromMilliseconds(6) };
+            Box_type(arr2, Tests.Box21);
+            Box_type(arr2, Tests.Box21);
+
+            TimeSpan[] arr3 = new TimeSpan[0];
+            Box_type(arr3, Tests.Box21);
+
+            TimeSpan[] arr4 = new TimeSpan[0];
+            Box_type(arr4, Tests.Box21);
+        }
+
+        [Fact]
+        public void Fast_Abi_Simple()
+        {
+            var simple = new test_component_fast.Simple();
+            Assert.NotNull(simple);
+            simple = new test_component_fast.Simple("Hello");
+            Assert.Equal("Hello", simple.Property1);
+            Assert.Equal("StaticMethod1", test_component_fast.Simple.StaticMethod1());
+            Assert.Equal("StaticMethod2", test_component_fast.Simple.StaticMethod2());
+            Assert.Equal("Method1", simple.Method1());
+            Assert.Equal("Method2", simple.Method2());
+            Assert.Equal("Method3", simple.Method3());
+            Assert.Equal("Method4", simple.Method4());
+            Assert.Equal("Method5", simple.Method5());
+            Assert.Equal("Method6", simple.Method6());
+            Assert.Equal("Method7", simple.Method7());
+            Assert.Equal("Method8", simple.Method8());
+            Assert.Equal("Method9", simple.Method9());
+            simple.Property1 = "Property1";
+            simple.Property3 = "Property3";
+            Assert.Equal("Property1", simple.Property1);
+            Assert.Equal("Property2", simple.Property2);
+            Assert.Equal("Property3", simple.Property3);
+            var ev = "";
+            simple.Event0 += () =>
+            {
+                ev = "Hello";
+            };
+            simple.InvokeEvent0();
+            Assert.Equal("Hello", ev);
+        }
+
+        [Fact]
+        public void Fast_Abi_Composition()
+        {
+            var compositor = new test_component_fast.Composition.Compositor();
+            var sv = compositor.CreateSpriteVisual();
+            sv.Offset = 10;
+            sv.StartAnimationGroup();
+            Assert.Equal("", sv.Serialize(100));
+            Assert.Equal(10, sv.Offset);
+            Assert.Equal(10, sv.Pad);
+            sv.ObjectProperty = new List<int> { 1, 2, 3 };
+            Assert.Equal(3, ((List<int>)sv.ObjectProperty).Count);
+        }
+
         // Nota Bene: this test case must always remain the final one
         [Fact]
         public void Z_Check_Coverage()
@@ -1092,5 +1206,6 @@ namespace UnitTest
             Tests.Simple();
             //Assert.Equal((double)Tests.Percentage, (double)100);
         }
+
     }
 }

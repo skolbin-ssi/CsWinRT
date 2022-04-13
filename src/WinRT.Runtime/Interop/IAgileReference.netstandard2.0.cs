@@ -28,7 +28,7 @@ namespace WinRT.Interop
     [Guid("00000146-0000-0000-C000-000000000046")]
     internal interface IGlobalInterfaceTable
     {
-        IntPtr RegisterInterfaceInGlobal(IObjectReference objRef, Guid riid);
+        IntPtr RegisterInterfaceInGlobal(IntPtr ptr, Guid riid);
         void RevokeInterfaceFromGlobal(IntPtr cookie);
         IObjectReference GetInterfaceFromGlobal(IntPtr cookie, Guid riid);
     }
@@ -37,6 +37,45 @@ namespace WinRT.Interop
 namespace ABI.WinRT.Interop
 {
     using global::WinRT;
+
+    internal static class IAgileReferenceMethods
+    {
+        public static unsafe IObjectReference Resolve(IObjectReference _obj, Guid riid)
+        {
+            if (_obj == null) return null;
+
+            var ThisPtr = _obj.ThisPtr;
+            IntPtr ptr = IntPtr.Zero;
+            ExceptionHelpers.ThrowExceptionForHR((*(delegate* unmanaged[Stdcall]<IntPtr, Guid*, IntPtr*, int>**)ThisPtr)[3](
+                ThisPtr, &riid, &ptr));
+            try
+            {
+                return ComWrappersSupport.GetObjectReferenceForInterface(ptr);
+            }
+            finally
+            {
+                MarshalInspectable<object>.DisposeAbi(ptr);
+            }
+        }
+
+        public static unsafe ObjectReference<T> Resolve<T>(IObjectReference _obj, Guid riid)
+        {
+            if (_obj == null) return null;
+
+            var ThisPtr = _obj.ThisPtr;
+            IntPtr ptr = IntPtr.Zero;
+            ExceptionHelpers.ThrowExceptionForHR((*(delegate* unmanaged[Stdcall]<IntPtr, Guid*, IntPtr*, int>**)ThisPtr)[3](
+                ThisPtr, &riid, &ptr));
+            try
+            {
+                return ComWrappersSupport.GetObjectReferenceForInterface<T>(ptr);
+            }
+            finally
+            {
+                MarshalInspectable<object>.DisposeAbi(ptr);
+            }
+        }
+    }
 
     [Guid("C03F6A43-65A4-9818-987E-E0B810D2A6F2")]
     internal sealed unsafe class IAgileReference : global::WinRT.Interop.IAgileReference
@@ -104,15 +143,7 @@ namespace ABI.WinRT.Interop
 
         public IObjectReference Resolve(Guid riid)
         {
-            ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.Resolve(ThisPtr, ref riid, out IntPtr ptr));
-            try
-            {
-                return ComWrappersSupport.GetObjectReferenceForInterface(ptr);
-            }
-            finally
-            {
-                MarshalInspectable<object>.DisposeAbi(ptr);
-            }
+            return IAgileReferenceMethods.Resolve(_obj, riid);
         }
     }
 
@@ -164,6 +195,8 @@ namespace ABI.WinRT.Interop
     [Guid("00000146-0000-0000-C000-000000000046")]
     internal sealed unsafe class IGlobalInterfaceTable : global::WinRT.Interop.IGlobalInterfaceTable
     {
+        internal static readonly Guid IID = new(0x00000146, 0, 0, 0xc0, 0, 0, 0, 0, 0, 0, 0x46);
+
         [Guid("00000146-0000-0000-C000-000000000046")]
         [StructLayout(LayoutKind.Sequential)]
         public struct Vftbl
@@ -192,9 +225,9 @@ namespace ABI.WinRT.Interop
             _obj = obj;
         }
 
-        public IntPtr RegisterInterfaceInGlobal(IObjectReference objRef, Guid riid)
+        public IntPtr RegisterInterfaceInGlobal(IntPtr ptr, Guid riid)
         {
-            ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.RegisterInterfaceInGlobal(ThisPtr, objRef.ThisPtr, ref riid, out IntPtr cookie));
+            ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.RegisterInterfaceInGlobal(ThisPtr, ptr, ref riid, out IntPtr cookie));
             return cookie;
 
         }

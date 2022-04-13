@@ -84,6 +84,14 @@ namespace WinRT
             return type.GetHelperType().GetMethod("CreateMarshaler", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static).ReturnType;
         }
 
+        internal static Type GetMarshaler2Type(this Type type)
+        {
+            var helperType = type.GetHelperType();
+            var createMarshaler = helperType.GetMethod("CreateMarshaler2", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static) ??
+                helperType.GetMethod("CreateMarshaler", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+            return createMarshaler.ReturnType;
+        }
+
         internal static Type GetMarshalerArrayType(this Type type)
         {
             return type.GetHelperType().GetMethod("CreateMarshalerArray", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)?.ReturnType;
@@ -104,11 +112,14 @@ namespace WinRT
             return type.IsClass && !type.IsArray ? type.GetAuthoringMetadataType() : null;
         }
 
+        private readonly static ConcurrentDictionary<Type, Type> AuthoringMetadataTypeCache = new ConcurrentDictionary<Type, Type>();
         internal static Type GetAuthoringMetadataType(this Type type)
         {
-            var ccwTypeName = $"ABI.Impl.{type.FullName}";
-            return type.Assembly.GetType(ccwTypeName, false) ?? Type.GetType(ccwTypeName, false);
+            return AuthoringMetadataTypeCache.GetOrAdd(type, (type) =>
+            {
+                var ccwTypeName = $"ABI.Impl.{type.FullName}";
+                return type.Assembly.GetType(ccwTypeName, false) ?? Type.GetType(ccwTypeName, false);
+            });
         }
-
     }
 }

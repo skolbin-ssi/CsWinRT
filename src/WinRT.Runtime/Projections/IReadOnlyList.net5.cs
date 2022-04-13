@@ -52,6 +52,8 @@ namespace System.Collections.Generic
             this._inner = _inner;
         }
 
+        public static IReadOnlyListImpl<T> CreateRcw(IInspectable obj) => new(obj.ObjRef);
+
         IObjectReference IWinRTObject.NativeObject => _inner;
 
         bool IWinRTObject.HasUnwrappableNativeObject => true;
@@ -114,7 +116,7 @@ namespace ABI.Windows.Foundation.Collections
             var __params = new object[] { ThisPtr, null, null, null };
             try
             {
-                __value = Marshaler<T>.CreateMarshaler(value);
+                __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[1] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.IndexOf_2.DynamicInvokeAbi(__params);
                 index = (uint)__params[2];
@@ -178,7 +180,7 @@ namespace ABI.System.Collections.Generic
             uint size = ABI.Windows.Foundation.Collections.IVectorViewMethods<T>.get_Size(obj);
             if (((uint)int.MaxValue) < size)
             {
-                throw new InvalidOperationException(ErrorStrings.InvalidOperation_CollectionBackingListTooLarge);
+                throw new InvalidOperationException(WinRTRuntimeErrorStrings.InvalidOperation_CollectionBackingListTooLarge);
             }
             return (int)size;
         }
@@ -210,11 +212,14 @@ namespace ABI.System.Collections.Generic
         public static IObjectReference CreateMarshaler(global::System.Collections.Generic.IReadOnlyList<T> obj) =>
             obj is null ? null : ComWrappersSupport.CreateCCWForObject<Vftbl>(obj, PIID);
 
+        public static ObjectReferenceValue CreateMarshaler2(global::System.Collections.Generic.IReadOnlyList<T> obj) => 
+            ComWrappersSupport.CreateCCWForObjectForMarshaling(obj, PIID);
+
         public static IntPtr GetAbi(IObjectReference objRef) =>
             objRef?.ThisPtr ?? IntPtr.Zero;
 
         public static IntPtr FromManaged(global::System.Collections.Generic.IReadOnlyList<T> value) =>
-            (value is null) ? IntPtr.Zero : CreateMarshaler(value).GetRef();
+            (value is null) ? IntPtr.Zero : CreateMarshaler2(value).Detach();
 
         public static void DisposeMarshaler(IObjectReference objRef) => objRef?.Dispose();
 
@@ -237,7 +242,7 @@ namespace ABI.System.Collections.Generic
                 // that Size > int.MaxValue:
                 if (((uint)int.MaxValue) <= index || index >= (uint)limit)
                 {
-                    Exception e = new ArgumentOutOfRangeException(nameof(index), ErrorStrings.ArgumentOutOfRange_IndexLargerThanMaxValue);
+                    Exception e = new ArgumentOutOfRangeException(nameof(index), WinRTRuntimeErrorStrings.ArgumentOutOfRange_IndexLargerThanMaxValue);
                     e.SetHResult(ExceptionHelpers.E_BOUNDS);
                     throw e;
                 }
