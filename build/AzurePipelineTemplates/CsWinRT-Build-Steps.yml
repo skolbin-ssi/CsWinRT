@@ -32,6 +32,15 @@ steps:
     installationPath: C:\Users\VssAdministrator\AppData\Local\Microsoft\dotnet\
     performMultiLevelLookup: true
 
+- task: UseDotNet@2
+  displayName: Use .NET Core SDK 3.1
+  inputs:
+    version: 3.1.x
+    installationPath: C:\Users\VssAdministrator\AppData\Local\Microsoft\dotnet\x86
+    performMultiLevelLookup: true
+  env:
+    PROCESSOR_ARCHITECTURE: x86
+
 # Install .NET 6 SDK 
 - task: PowerShell@2
   displayName: Install .NET 6 SDK
@@ -121,8 +130,9 @@ steps:
 
       set cswinrt_echo=on
       set cswinrt_build_only=true
+      set CIBuildReason=CI
       rem PDBs being copied for each project reference are causing out of disk space issues in the pipeline.  Making use of AllowedReferenceRelatedFileExtensions to avoid them being copied.
-      set cswinrt_build_params=/bl:$(Build.SourcesDirectory)\cswinrt.binlog /p:CleanIntermediateDirs=true /p:AllowedReferenceRelatedFileExtensions=".xml;.pri;.dll.config;.exe.config"
+      set cswinrt_build_params=/bl:$(Build.SourcesDirectory)\cswinrt.binlog /p:CleanIntermediateDirs=true /p:AllowedReferenceRelatedFileExtensions=".xml;.pri;.dll.config;.exe.config" /p:CIBuildReason=CI
       build.cmd $(BuildPlatform) $(BuildConfiguration) $(VersionNumber) $(Build.BuildNumber) $(WinRT.Runtime.AssemblyVersion) 
 
 # Build Tool for Embedded Sample
@@ -243,7 +253,7 @@ steps:
   displayName: Stage Unit Test
   condition: and(succeeded(), or(eq(variables['BuildPlatform'], 'x86'), eq(variables['BuildPlatform'], 'x64')))
   inputs:
-    SourceFolder: $(Build.SourcesDirectory)\src\Tests\UnitTest\bin\$(BuildPlatform)\$(BuildConfiguration)\net5.0
+    SourceFolder: $(Build.SourcesDirectory)\src\Tests\UnitTest\bin\$(BuildPlatform)\$(BuildConfiguration)\net6.0
     Contents: |
       unittest.dll
       unittest.pdb
@@ -285,17 +295,6 @@ steps:
   inputs:
     PathtoPublish: $(Build.ArtifactStagingDirectory)\release_netstandard2.0
     ArtifactName: netstandard2.0
-
-# Stage Net5.0
-- task: CopyFiles@2
-  displayName: Stage Net5.0
-  condition: and(succeeded(), eq(variables['BuildPlatform'], 'x86'), eq(variables['BuildConfiguration'], 'release'))
-  inputs:
-    SourceFolder: $(Build.SourcesDirectory)\src\WinRT.Runtime\bin\$(BuildConfiguration)\net5.0
-    Contents: |
-      WinRT.Runtime.dll
-      WinRT.Runtime.pdb
-    TargetFolder: $(Build.ArtifactStagingDirectory)\release_net5.0
 
 # Stage Net6.0
 - task: CopyFiles@2
@@ -372,6 +371,22 @@ steps:
       CsWinRTDiagnosticStrings.resx
     TargetFolder: $(Build.ArtifactStagingDirectory)\resx\WinRT.SourceGenerator
 
+# Stage CsWinMD
+- task: CopyFiles@2
+  displayName: Stage CsWinMD
+  condition: and(succeeded(), eq(variables['BuildPlatform'], 'x86'), eq(variables['BuildConfiguration'], 'release'))
+  inputs:
+    SourceFolder: $(Build.SourcesDirectory)\src\Authoring\cswinmd\bin\$(BuildConfiguration)\net6.0
+    Contents: |
+      CsWinMD.dll
+      CsWinMD.exe
+      CsWinMD.pdb
+      CsWinMD.deps.json
+      CsWinMD.runtimeconfig.json
+      Microsoft.CodeAnalysis.CSharp.dll
+      Microsoft.CodeAnalysis.dll
+    TargetFolder: $(Build.ArtifactStagingDirectory)\release_net6.0\CsWinMD
+
 # Publish ResX
 - task: PublishBuildArtifacts@1
   displayName: Publish ResX files
@@ -379,14 +394,6 @@ steps:
   inputs:
     PathtoPublish: $(Build.ArtifactStagingDirectory)\resx
     ArtifactName: ResX
-
-# Publish Net5.0
-- task: PublishBuildArtifacts@1
-  displayName: Publish Net5.0
-  condition: and(succeeded(), eq(variables['BuildPlatform'], 'x86'), eq(variables['BuildConfiguration'], 'release'))
-  inputs:
-    PathtoPublish: $(Build.ArtifactStagingDirectory)\release_net5.0
-    ArtifactName: net5.0
 
 # Publish Net6.0
 - task: PublishBuildArtifacts@1

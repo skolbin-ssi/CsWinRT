@@ -92,7 +92,8 @@ namespace WinRT
 #if NET
         [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | 
                                             DynamicallyAccessedMemberTypes.NonPublicMethods |
-                                            DynamicallyAccessedMemberTypes.PublicNestedTypes)]
+                                            DynamicallyAccessedMemberTypes.PublicNestedTypes |
+                                            DynamicallyAccessedMemberTypes.PublicFields)]
 #endif
         public static Type GetHelperType(this Type type)
         {
@@ -179,13 +180,18 @@ namespace WinRT
         }
 
         private readonly static ConcurrentDictionary<Type, Type> AuthoringMetadataTypeCache = new ConcurrentDictionary<Type, Type>();
+
         internal static Type GetAuthoringMetadataType(this Type type)
         {
-            return AuthoringMetadataTypeCache.GetOrAdd(type, (type) =>
-            {
-                var ccwTypeName = $"ABI.Impl.{type.FullName}";
-                return type.Assembly.GetType(ccwTypeName, false);
-            });
+            return AuthoringMetadataTypeCache.GetOrAdd(type,
+#if NET
+                [RequiresUnreferencedCodeAttribute("If authoring a WinRT component in C# using C#/WinRT authoring support, it might require ABI helper types that might get trimmed. Avoid marking such components trimmable or ensure types don't get trimmed from it.")]
+#endif
+                (type) =>
+                {
+                    var ccwTypeName = $"ABI.Impl.{type.FullName}";
+                    return type.Assembly.GetType(ccwTypeName, false);
+                });
         }
     }
 }
