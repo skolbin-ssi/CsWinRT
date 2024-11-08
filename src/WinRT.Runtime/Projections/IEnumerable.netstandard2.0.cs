@@ -110,13 +110,13 @@ namespace ABI.System.Collections.Generic
         {
             internal IInspectable.Vftbl IInspectableVftbl;
             public IEnumerable_Delegates.First_0 First_0;
-            public static Guid PIID = GuidGenerator.CreateIID(typeof(IEnumerable<T>));
+            public static readonly Guid PIID = GuidGenerator.CreateIIDUnsafe(typeof(IEnumerable<T>));
 
             internal unsafe Vftbl(IntPtr thisPtr)
             {
-                var vftblPtr = Marshal.PtrToStructure<VftblPtr>(thisPtr);
-                var vftbl = (IntPtr*)vftblPtr.Vftbl;
-                IInspectableVftbl = Marshal.PtrToStructure<IInspectable.Vftbl>(vftblPtr.Vftbl);
+                var vftblPtr = *(void***)thisPtr;
+                var vftbl = (IntPtr*)vftblPtr;
+                IInspectableVftbl = *(IInspectable.Vftbl*)vftblPtr;
                 First_0 = Marshal.GetDelegateForFunctionPointer<IEnumerable_Delegates.First_0>(vftbl[6]);
             }
 
@@ -162,7 +162,7 @@ namespace ABI.System.Collections.Generic
             var vftblT = new Vftbl(thisPtr);
             return ObjectReference<Vftbl>.FromAbi(thisPtr, vftblT);
         }
-        public static Guid PIID = Vftbl.PIID;
+        public static readonly Guid PIID = Vftbl.PIID;
 
         public static implicit operator IEnumerable<T>(IObjectReference obj) => (obj != null) ? new IEnumerable<T>(obj) : null;
         public static implicit operator IEnumerable<T>(ObjectReference<Vftbl> obj) => (obj != null) ? new IEnumerable<T>(obj) : null;
@@ -186,6 +186,7 @@ namespace ABI.System.Collections.Generic
             try
             {
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.First_0(ThisPtr, out __retval));
+                GC.KeepAlive(_obj);
                 return ABI.System.Collections.Generic.IEnumerator<T>.FromAbi(__retval);
             }
             finally
@@ -453,14 +454,14 @@ namespace ABI.System.Collections.Generic
             internal _get_PropertyAsBoolean get_HasCurrent_1;
             public IEnumerator_Delegates.MoveNext_2 MoveNext_2;
             public IEnumerator_Delegates.GetMany_3 GetMany_3;
-            public static Guid PIID = GuidGenerator.CreateIID(typeof(IEnumerator<T>));
-            private static readonly Type get_Current_0_Type = Expression.GetDelegateType(new Type[] { typeof(void*), Marshaler<T>.AbiType.MakeByRefType(), typeof(int) });
+            public static readonly Guid PIID = GuidGenerator.CreateIIDUnsafe(typeof(IEnumerator<T>));
+            private static readonly Type get_Current_0_Type = Projections.GetAbiDelegateType(new Type[] { typeof(void*), Marshaler<T>.AbiType.MakeByRefType(), typeof(int) });
 
             internal unsafe Vftbl(IntPtr thisPtr)
             {
-                var vftblPtr = Marshal.PtrToStructure<VftblPtr>(thisPtr);
-                var vftbl = (IntPtr*)vftblPtr.Vftbl;
-                IInspectableVftbl = Marshal.PtrToStructure<IInspectable.Vftbl>(vftblPtr.Vftbl);
+                var vftblPtr = *(void***)thisPtr;
+                var vftbl = (IntPtr*)vftblPtr;
+                IInspectableVftbl = *(IInspectable.Vftbl*)vftblPtr;
                 get_Current_0 = Marshal.GetDelegateForFunctionPointer(vftbl[6], get_Current_0_Type);
                 get_HasCurrent_1 = Marshal.GetDelegateForFunctionPointer<_get_PropertyAsBoolean>(vftbl[7]);
                 MoveNext_2 = Marshal.GetDelegateForFunctionPointer<IEnumerator_Delegates.MoveNext_2>(vftbl[8]);
@@ -585,7 +586,7 @@ namespace ABI.System.Collections.Generic
             var vftblT = new Vftbl(thisPtr);
             return ObjectReference<Vftbl>.FromAbi(thisPtr, vftblT);
         }
-        public static Guid PIID = Vftbl.PIID;
+        public static readonly Guid PIID = Vftbl.PIID;
 
         public static implicit operator IEnumerator<T>(IObjectReference obj) => (obj != null) ? new IEnumerator<T>(obj) : null;
         public static implicit operator IEnumerator<T>(ObjectReference<Vftbl> obj) => (obj != null) ? new IEnumerator<T>(obj) : null;
@@ -609,6 +610,7 @@ namespace ABI.System.Collections.Generic
         {
             byte __retval = default;
             global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.MoveNext_2(ThisPtr, out __retval));
+            GC.KeepAlive(_obj);
             return __retval != 0;
         }
 
@@ -623,6 +625,7 @@ namespace ABI.System.Collections.Generic
                 __items = Marshaler<T>.CreateMarshalerArray(items);
                 (__items_length, __items_data) = Marshaler<T>.GetAbiArray(__items);
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.GetMany_3(ThisPtr, __items_length, __items_data, out __retval));
+                GC.KeepAlive(_obj);
                 items = Marshaler<T>.FromAbiArray((__items_length, __items_data));
                 return __retval;
             }
@@ -640,6 +643,7 @@ namespace ABI.System.Collections.Generic
                 try
                 {
                     _obj.Vftbl.get_Current_0.DynamicInvokeAbi(__params);
+                    GC.KeepAlive(_obj);
                     return Marshaler<T>.FromAbi(__params[1]);
                 }
                 finally
@@ -655,6 +659,7 @@ namespace ABI.System.Collections.Generic
             {
                 byte __retval = default;
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.get_HasCurrent_1(ThisPtr, out __retval));
+                GC.KeepAlive(_obj);
                 return __retval != 0;
             }
         }

@@ -16,11 +16,13 @@ namespace Generator
             _assemblyName = assemblyName;
             _context = context;
             _flag = false;
+            _typeMapper = new TypeMapper(context.AnalyzerConfigOptions.GetCsWinRTUseWindowsUIXamlProjections());
         }
 
         private readonly string _assemblyName;
         private readonly GeneratorExecutionContext _context;
         private bool _flag;
+        private readonly TypeMapper _typeMapper;
 
         public bool Found() { return _flag; }
 
@@ -45,7 +47,7 @@ namespace Generator
         {
             WinRTSyntaxReceiver syntaxReceiver = (WinRTSyntaxReceiver)_context.SyntaxReceiver;
 
-            // Used to check for conflicitng namespace names
+            // Used to check for conflicting namespace names
             HashSet<string> namespaceNames = new();
 
             foreach (var @namespace in syntaxReceiver.Namespaces)
@@ -87,10 +89,12 @@ namespace Generator
             foreach (var declaration in syntaxReceiver.Declarations)
             {
                 var model = _context.Compilation.GetSemanticModel(declaration.SyntaxTree);
+                var symbol = model.GetDeclaredSymbol(declaration);
 
                 // Check symbol information for whether it is public to properly detect partial types
-                // which can leave out modifier.
-                if (model.GetDeclaredSymbol(declaration).DeclaredAccessibility != Accessibility.Public)
+                // which can leave out modifier. Also ignore nested types not effectively public
+                if (symbol.DeclaredAccessibility != Accessibility.Public ||
+                    (symbol is ITypeSymbol typeSymbol && !typeSymbol.IsPubliclyAccessible()))
                 {
                     continue;
                 }
@@ -103,7 +107,7 @@ namespace Generator
                     var props = @class.DescendantNodes().OfType<PropertyDeclarationSyntax>().Where(IsPublic);
 
                     // filter out methods and properties that will be replaced with our custom type mappings
-                    IgnoreCustomTypeMappings(classSymbol, ref publicMethods, ref props);
+                    IgnoreCustomTypeMappings(classSymbol, _typeMapper, ref publicMethods, ref props);
 
                     if (!classSymbol.IsSealed && !classSymbol.IsStatic)
                     {
@@ -135,7 +139,7 @@ namespace Generator
                     var props = @interface.DescendantNodes().OfType<PropertyDeclarationSyntax>().Where(IsPublic);
 
                     // filter out methods and properties that will be replaced with our custom type mappings
-                    IgnoreCustomTypeMappings(interfaceSym, ref methods, ref props);
+                    IgnoreCustomTypeMappings(interfaceSym, _typeMapper, ref methods, ref props);
 
                     if (interfaceSym.IsGenericType)
                     {
@@ -196,7 +200,7 @@ namespace Generator
             }
 
             // the return type can be covariant with the interface method's return type (i.e. a sub-type)
-            if (SymEq(m.ReturnType, interfaceMethod.ReturnType) && !m.ReturnType.AllInterfaces.Contains(interfaceMethod.ReturnType))
+            if (SymEq(m.ReturnType, interfaceMethod.ReturnType) && !m.ReturnType.AllInterfaces.Contains(interfaceMethod.ReturnType, SymbolEqualityComparer.Default))
             {
                 return false;
             }
@@ -204,6 +208,7 @@ namespace Generator
         }
 
         private void IgnoreCustomTypeMappings(INamedTypeSymbol typeSymbol,
+            TypeMapper typeMapper,
             ref IEnumerable<MethodDeclarationSyntax> methods,
             ref IEnumerable<PropertyDeclarationSyntax> properties)
         {
@@ -212,10 +217,10 @@ namespace Generator
                 return sym.OriginalDefinition.ContainingNamespace + "." + sym.OriginalDefinition.MetadataName;
             }
 
-            HashSet<ISymbol> classMethods = new();
+            HashSet<ISymbol> classMethods = new(SymbolEqualityComparer.Default);
 
             foreach (var @interface in typeSymbol.AllInterfaces.
-                        Where(symbol => WinRTTypeWriter.MappedCSharpTypes.ContainsKey(QualifiedName(symbol)) ||
+                        Where(symbol => typeMapper.HasMappingForType(QualifiedName(symbol)) ||
                                         WinRTTypeWriter.ImplementedInterfacesWithoutMapping.Contains(QualifiedName(symbol))))
             {
                 foreach (var interfaceMember in @interface.GetMembers())

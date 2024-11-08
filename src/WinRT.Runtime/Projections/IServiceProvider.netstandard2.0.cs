@@ -30,7 +30,7 @@ namespace ABI.System
 
             static unsafe Vftbl()
             {
-                AbiToProjectionVftablePtr = ComWrappersSupport.AllocateVtableMemory(typeof(Vftbl), Marshal.SizeOf<global::WinRT.IInspectable.Vftbl>() + sizeof(IntPtr) * 4);
+                AbiToProjectionVftablePtr = ComWrappersSupport.AllocateVtableMemory(typeof(Vftbl), Marshal.SizeOf<global::WinRT.IInspectable.Vftbl>() + sizeof(IntPtr) * 1);
                 (*(Vftbl*)AbiToProjectionVftablePtr) = new Vftbl
                 {
                     IInspectableVftbl = global::WinRT.IInspectable.Vftbl.AbiToProjectionVftable,
@@ -79,6 +79,7 @@ namespace ABI.System
             {
                 __type = global::ABI.System.Type.CreateMarshaler(type);
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.GetService_0(ThisPtr, global::ABI.System.Type.GetAbi(__type), &__retval));
+                GC.KeepAlive(_obj);
                 return MarshalInspectable<object>.FromAbi(__retval);
             }
             finally

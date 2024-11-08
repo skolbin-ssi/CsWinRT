@@ -1,5 +1,6 @@
 ﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Markup;
 using System;
 using System.Collections;
@@ -9,12 +10,18 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using Windows.Foundation.Metadata;
+using Windows.Graphics.Effects;
+using WinRT;
+using WinRT.Interop;
 
 #pragma warning disable CA1416
 
@@ -193,6 +200,110 @@ namespace AuthoringTest
         public string Value => "CsWinRT";
     }
 
+    [GeneratedBindableCustomProperty]
+    public sealed partial class CustomProperty
+    {
+        public int Number { get; } = 4;
+        public string Value => "CsWinRT";
+    }
+
+    [GeneratedBindableCustomProperty]
+    public partial struct CustomPropertyStructType
+    {
+        // Public WinRT struct types must have at least one field
+        public int Dummy;
+
+        public int Number => 4;
+        public string Value => "CsWinRTFromStructType";
+    }
+
+    [GeneratedBindableCustomProperty]
+    internal sealed partial record CustomPropertyRecordType
+    {
+        public int Number { get; } = 4;
+        public string Value => "CsWinRTFromRecordType";
+    }
+
+    [GeneratedBindableCustomProperty]
+    internal partial record struct CustomPropertyRecordStructType
+    {
+        public int Number => 4;
+        public string Value => "CsWinRTFromRecordStructType";
+    }
+
+    public static class CustomPropertyRecordTypeFactory
+    {
+        public static object CreateStruct() => new CustomPropertyStructType();
+        
+        public static object CreateRecord() => new CustomPropertyRecordType();
+
+        public static object CreateRecordStruct() => default(CustomPropertyRecordStructType);
+    }
+
+    public sealed partial class CustomPropertyProviderWithExplicitImplementation : ICustomPropertyProvider
+    {
+        public Type Type => typeof(CustomPropertyProviderWithExplicitImplementation);
+
+        public ICustomProperty GetCustomProperty(string name)
+        {
+            if (name == "TestCustomProperty")
+            {
+                return new CustomPropertyWithExplicitImplementation();
+            }
+
+            return null;
+        }
+
+        public ICustomProperty GetIndexedProperty(string name, Type type)
+        {
+            return null;
+        }
+
+        public string GetStringRepresentation()
+        {
+            return string.Empty;
+        }
+    }
+
+    public sealed partial class CustomPropertyWithExplicitImplementation : ICustomProperty
+    {
+        internal CustomPropertyWithExplicitImplementation()
+        {
+        }
+
+        public bool CanRead => true;
+
+        public bool CanWrite => false;
+
+        public string Name => "TestCustomProperty";
+
+        public Type Type => typeof(CustomPropertyWithExplicitImplementation);
+
+        /// <inheritdoc />
+        public object GetIndexedValue(object target, object index)
+        {
+            throw new NotSupportedException();
+        }
+
+        /// <inheritdoc />
+        public object GetValue(object target)
+        {
+            return "TestPropertyValue";
+        }
+
+        /// <inheritdoc />
+        public void SetIndexedValue(object target, object value, object index)
+        {
+            throw new NotSupportedException();
+        }
+
+        /// <inheritdoc />
+        public void SetValue(object target, object value)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
     [Version(3u)]
     public interface IDouble
     {
@@ -323,6 +434,36 @@ namespace AuthoringTest
             };
         }
 
+        public static IList<bool> GetBools()
+        {
+            return new List<bool>()
+            {
+                true,
+                false,
+                true
+            };
+        }
+
+        public static IList<BasicStruct> GetBasicStructs()
+        {
+            return new List<BasicStruct>()
+            {
+                new BasicStruct() { X = 1, Y = 2, Value = "Basic" },
+                new BasicStruct() { X = 2, Y = 4, Value = "Struct" },
+            };
+        }
+
+        public static IList<ComplexStruct> GetComplexStructs()
+        {
+            return new List<ComplexStruct>()
+            {
+                new ComplexStruct() { 
+                    X = 12,
+                    Val = true, 
+                    BasicStruct = new BasicStruct() { X = 1, Y = 2, Value = "Basic" } },
+            };
+        }
+
         public IAsyncOperation<Int32> GetIntAsyncOperation()
         {
             int val = IntAsyncOperation.GetResults();
@@ -333,6 +474,25 @@ namespace AuthoringTest
                 return val;
             });
             return task.AsAsyncOperation();
+        }
+
+        public IAsyncOperationWithProgress<double, double> GetDoubleAsyncOperation()
+        {
+            return AsyncInfo.Run<double, double>(async (cancellationToken, progress) =>
+            {
+                await Task.Delay(100);
+                return 4.0;
+            });
+        }
+
+        public IAsyncOperation<BasicStruct> GetStructAsyncOperation()
+        {
+            return System.Runtime.InteropServices.WindowsRuntime.AsyncInfo.FromResult(new BasicStruct() { X = 2, Y = 4, Value = "Test" });
+        }
+
+        public IAsyncOperation<bool> GetBoolAsyncOperation()
+        {
+            return Task.FromResult(false).AsAsyncOperation();
         }
 
         public int SetIntAsyncOperation(IAsyncOperation<Int32> op)
@@ -459,7 +619,6 @@ namespace AuthoringTest
                 new BasicDelegate[] { new BasicDelegate((uint value) => {}) },
                 new [] { new DisposableClass().GetType() , new NonProjectedDisposableClass().GetType() },
                 new Type[] { typeof(TestClass), typeof(DisposableClass) },
-                new PrivateEnum[] { PrivateEnum.PrivateFirst, PrivateEnum.PrivateSecond}
             };
         }
     }
@@ -479,7 +638,7 @@ namespace AuthoringTest
         }
     }
 
-    internal sealed class NonProjectedDisposableClass : IDisposable
+    internal sealed partial class NonProjectedDisposableClass : IDisposable
     {
         public bool IsDisposed { get; set; }
 
@@ -1050,6 +1209,14 @@ namespace AuthoringTest
         // Tests DefaultOverload attribute specified in projected interface.
         public IXamlType GetXamlType(Type type)
         {
+            if (type == typeof(Nullable<double>) ||
+                type == typeof(TimeSpan?) ||
+                type == typeof(BasicEnum?) ||
+                type == typeof(FlagsEnum?))
+            {
+                return new XamlType(type);
+            }
+
             return null;
         }
 
@@ -1061,6 +1228,72 @@ namespace AuthoringTest
         public XmlnsDefinition[] GetXmlnsDefinitions()
         {
             return null;
+        }
+    }
+
+    internal sealed partial class XamlType : IXamlType
+    {
+        private readonly Type _type;
+
+        public XamlType(Type type)
+        {
+            _type = type;
+        }
+
+        public IXamlType BaseType => new XamlType(_type.BaseType);
+
+        public IXamlType BoxedType => throw new NotImplementedException();
+
+        public IXamlMember ContentProperty => throw new NotImplementedException();
+
+        public string FullName => _type.FullName;
+
+        public bool IsArray => _type.IsArray;
+
+        public bool IsBindable => throw new NotImplementedException();
+
+        public bool IsCollection => throw new NotImplementedException();
+
+        public bool IsConstructible => throw new NotImplementedException();
+
+        public bool IsDictionary => throw new NotImplementedException();
+
+        public bool IsMarkupExtension => throw new NotImplementedException();
+
+        public IXamlType ItemType => throw new NotImplementedException();
+
+        public IXamlType KeyType => throw new NotImplementedException();
+
+        public Type UnderlyingType => throw new NotImplementedException();
+
+        public object ActivateInstance()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void AddToMap(object instance, object key, object value)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void AddToVector(object instance, object value)
+        {
+            throw new NotImplementedException();
+        }
+
+        public object CreateFromString(string value)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IXamlMember GetMember(string name)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void RunInitializer()
+        {
+            throw new NotImplementedException();
         }
     }
 
@@ -1470,6 +1703,10 @@ namespace AuthoringTest
         }
     }
 
+    public sealed class TestCollection : CollectionBase
+    {
+    }
+
     public partial interface IPartialInterface
     {
         public string GetNumberAsString();
@@ -1569,5 +1806,249 @@ namespace AuthoringTest
     public partial struct PartialStruct
     {
         public double Z;
+    }
+
+    // Nested type to validate (https://github.com/microsoft/CsWinRT/issues/1477)
+    // Doesn't need to be consumed, we just want to verify the generator does work.
+    internal partial class Nested1
+    {
+        internal partial record struct Nested2
+        {
+            internal partial struct Nested3
+            {
+                internal partial interface INested4
+                {
+                    internal partial record Nested5
+                    {
+                        internal partial class InnerMostType : IGraphicsEffectSource, IPublicInterface, IDisposable
+                        {
+                            public string HelloWorld()
+                            {
+                                return "Hello from mixed WinRT/COM";
+                            }
+
+                            public void Dispose()
+                            {
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public sealed class TestMixedWinRTCOMWrapper : IGraphicsEffectSource, IPublicInterface, IInternalInterface1, SomeInternalType.IInternalInterface2
+    {
+        public string HelloWorld()
+        {
+            return "Hello from mixed WinRT/COM";
+        }
+
+        unsafe int IInternalInterface1.GetNumber(int* value)
+        {
+            *value = 42;
+
+            return 0;
+        }
+
+        unsafe int SomeInternalType.IInternalInterface2.GetNumber(int* value)
+        {
+            *value = 123;
+
+            return 0;
+        }
+    }
+
+    public interface IPublicInterface
+    {
+        string HelloWorld();
+    }
+
+    // Internal, classic COM interface
+    [global::System.Runtime.InteropServices.Guid("C7850559-8FF2-4E54-A237-6ED813F20CDC")]
+    [WindowsRuntimeType]
+    [WindowsRuntimeHelperType(typeof(IInternalInterface1))]
+    internal unsafe interface IInternalInterface1
+    {
+        int GetNumber(int* value);
+
+        [global::System.Runtime.InteropServices.Guid("C7850559-8FF2-4E54-A237-6ED813F20CDC")]
+        public struct Vftbl
+        {
+            public static readonly IntPtr AbiToProjectionVftablePtr = InitVtbl();
+
+            private static IntPtr InitVtbl()
+            {
+                Vftbl* lpVtbl = (Vftbl*)ComWrappersSupport.AllocateVtableMemory(typeof(Vftbl), sizeof(Vftbl));
+
+                lpVtbl->IUnknownVftbl = IUnknownVftbl.AbiToProjectionVftbl;
+                lpVtbl->GetNumber = &GetNumberFromAbi;
+
+                return (IntPtr)lpVtbl;
+            }
+
+            private IUnknownVftbl IUnknownVftbl;
+            private delegate* unmanaged[Stdcall]<void*, int*, int> GetNumber;
+
+            [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+            private static int GetNumberFromAbi(void* thisPtr, int* value)
+            {
+                try
+                {
+                    return ComWrappersSupport.FindObject<IInternalInterface1>((IntPtr)thisPtr).GetNumber(value);
+                }
+                catch (Exception e)
+                {
+                    ExceptionHelpers.SetErrorInfo(e);
+
+                    return Marshal.GetHRForException(e);
+                }
+            }
+        }
+    }
+
+    internal struct SomeInternalType
+    {
+        // Nested, classic COM interface
+        [global::System.Runtime.InteropServices.Guid("8A08E18A-8D20-4E7C-9242-857BFE1E3159")]
+        [WindowsRuntimeType]
+        [WindowsRuntimeHelperType(typeof(IInternalInterface2))]
+        public unsafe interface IInternalInterface2
+        {
+            int GetNumber(int* value);
+
+            [global::System.Runtime.InteropServices.Guid("8A08E18A-8D20-4E7C-9242-857BFE1E3159")]
+            public struct Vftbl
+            {
+                public static readonly IntPtr AbiToProjectionVftablePtr = InitVtbl();
+
+                private static IntPtr InitVtbl()
+                {
+                    Vftbl* lpVtbl = (Vftbl*)ComWrappersSupport.AllocateVtableMemory(typeof(Vftbl), sizeof(Vftbl));
+
+                    lpVtbl->IUnknownVftbl = IUnknownVftbl.AbiToProjectionVftbl;
+                    lpVtbl->GetNumber = &GetNumberFromAbi;
+
+                    return (IntPtr)lpVtbl;
+                }
+
+                private IUnknownVftbl IUnknownVftbl;
+                private delegate* unmanaged[Stdcall]<void*, int*, int> GetNumber;
+
+                [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+                private static int GetNumberFromAbi(void* thisPtr, int* value)
+                {
+                    try
+                    {
+                        return ComWrappersSupport.FindObject<IInternalInterface2>((IntPtr)thisPtr).GetNumber(value);
+                    }
+                    catch (Exception e)
+                    {
+                        ExceptionHelpers.SetErrorInfo(e);
+
+                        return Marshal.GetHRForException(e);
+                    }
+                }
+            }
+        }
+    }
+
+    [System.Runtime.InteropServices.Guid("26D8EE57-8B1B-46F4-A4F9-8C6DEEEAF53A")]
+    public interface ICustomInterfaceGuid
+    {
+        string HelloWorld();
+    }
+
+    public sealed class CustomInterfaceGuidClass : ICustomInterfaceGuid
+    {
+        public string HelloWorld() => "Hello World!";
+    }
+
+    public sealed class NonActivatableType
+    {
+        private readonly string _text;
+
+        // This should not be referenced by the generated activation factory
+        internal NonActivatableType(string text)
+        {
+            _text = text;
+        }
+
+        public string GetText()
+        {
+            return _text;
+        }
+    }
+
+    public static class NonActivatableFactory
+    {
+        public static NonActivatableType Create()
+        {
+            return new("Test123");
+        }
+    }
+
+    public sealed class TypeOnlyActivatableViaItsOwnFactory
+    {
+        private readonly string _text;
+
+        private TypeOnlyActivatableViaItsOwnFactory(string text)
+        {
+            _text = text;
+        }
+
+        public static TypeOnlyActivatableViaItsOwnFactory Create()
+        {
+            return new("Hello!");
+        }
+
+        public string GetText()
+        {
+            return _text;
+        }
+    }
+}
+
+namespace ABI.AuthoringTest
+{
+    internal static class IInternalInterface1Methods
+    {
+        public static Guid IID => typeof(global::AuthoringTest.IInternalInterface1).GUID;
+
+        public static IntPtr AbiToProjectionVftablePtr => global::AuthoringTest.IInternalInterface1.Vftbl.AbiToProjectionVftablePtr;
+    }
+
+    internal struct SomeInternalType
+    {
+        internal static class IInternalInterface2Methods
+        {
+            public static Guid IID => typeof(global::AuthoringTest.SomeInternalType.IInternalInterface2).GUID;
+
+            public static IntPtr AbiToProjectionVftablePtr => global::AuthoringTest.SomeInternalType.IInternalInterface2.Vftbl.AbiToProjectionVftablePtr;
+        }
+    }
+}
+
+namespace AnotherNamespace
+{
+    internal partial class PartialClass3
+    {
+        public void InternalFunction()
+        {
+        }
+    }
+
+    partial class PartialClass3
+    {
+        public void InternalFunction2()
+        {
+        }
+    }
+
+    internal class InternalClass
+    {
+        public void InternalFunction()
+        {
+        }
     }
 }

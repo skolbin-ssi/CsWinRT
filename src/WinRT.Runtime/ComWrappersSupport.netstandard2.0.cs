@@ -23,18 +23,25 @@ namespace WinRT
         private static ConditionalWeakTable<object, ComCallableWrapper> ComWrapperCache = new ConditionalWeakTable<object, ComCallableWrapper>();
 
         private static ConcurrentDictionary<IntPtr, System.WeakReference<object>> RuntimeWrapperCache = new ConcurrentDictionary<IntPtr, System.WeakReference<object>>();
-        private readonly static ConcurrentDictionary<Type, Func<object, IObjectReference>> TypeObjectRefFuncCache = new ConcurrentDictionary<Type, Func<object, IObjectReference>>();
+        private static readonly ConcurrentDictionary<Type, Func<object, IObjectReference>> TypeObjectRefFuncCache = new ConcurrentDictionary<Type, Func<object, IObjectReference>>();
 
         internal static InspectableInfo GetInspectableInfo(IntPtr pThis) => UnmanagedObject.FindObject<ComCallableWrapper>(pThis).InspectableInfo;
 
         public static T CreateRcwForComObject<T>(IntPtr ptr)
+        {
+            return CreateRcwForComObject<T>(ptr, true);
+        }
+
+        internal static Func<IInspectable, object> GetTypedRcwFactory(Type implementationType) => TypedObjectFactoryCacheForType.GetOrAdd(implementationType, CreateTypedRcwFactory);
+
+        private static T CreateRcwForComObject<T>(IntPtr ptr, bool tryUseCache)
         {
             if (ptr == IntPtr.Zero)
             {
                 return default;
             }
 
-            IObjectReference identity = GetObjectReferenceForInterface(ptr).As<IUnknownVftbl>();
+            IObjectReference identity = GetObjectReferenceForInterface<IUnknownVftbl>(ptr, IID.IID_IUnknown);
 
             object keepAliveSentinel = null;
 
@@ -43,13 +50,21 @@ namespace WinRT
                 object runtimeWrapper = null;
                 if (typeof(T).IsDelegate())
                 {
-                    runtimeWrapper = CreateDelegateFactory(typeof(T))(ptr);
+                    runtimeWrapper = GetOrCreateDelegateFactory(typeof(T))(ptr);
                 }
                 else if (identity.TryAs<IInspectable.Vftbl>(out var inspectableRef) == 0)
                 {
                     var inspectable = new IInspectable(identity);
-                    Type runtimeClassType = GetRuntimeClassForTypeCreation(inspectable, typeof(T));
-                    runtimeWrapper = runtimeClassType == null ? inspectable : TypedObjectFactoryCacheForType.GetOrAdd(runtimeClassType, classType => CreateTypedRcwFactory(classType))(inspectable);
+
+                    if (typeof(T).IsSealed)
+                    {
+                        runtimeWrapper = GetTypedRcwFactory(typeof(T))(inspectable);
+                    }
+                    else
+                    {
+                        Type runtimeClassType = GetRuntimeClassForTypeCreation(inspectable, typeof(T));
+                        runtimeWrapper = runtimeClassType == null ? inspectable : TypedObjectFactoryCacheForType.GetOrAdd(runtimeClassType, CreateTypedRcwFactory)(inspectable);
+                    }
                 }
                 else if (identity.TryAs<ABI.WinRT.Interop.IWeakReference.Vftbl>(out var weakRef) == 0)
                 {
@@ -62,17 +77,25 @@ namespace WinRT
                 return runtimeWrapperReference;
             };
 
-            RuntimeWrapperCache.AddOrUpdate(
-                identity.ThisPtr,
-                rcwFactory,
-                (ptr, oldValue) =>
-                {
-                    if (!oldValue.TryGetTarget(out keepAliveSentinel))
+            object rcw;
+            if (tryUseCache)
+            {
+                RuntimeWrapperCache.AddOrUpdate(
+                    identity.ThisPtr,
+                    rcwFactory,
+                    (ptr, oldValue) =>
                     {
-                        return rcwFactory(ptr);
-                    }
-                    return oldValue;
-                }).TryGetTarget(out object rcw);
+                        if (!oldValue.TryGetTarget(out keepAliveSentinel))
+                        {
+                            return rcwFactory(ptr);
+                        }
+                        return oldValue;
+                    }).TryGetTarget(out rcw);
+            }
+            else
+            {
+                rcwFactory(ptr).TryGetTarget(out rcw);
+            }
 
             GC.KeepAlive(keepAliveSentinel);
 
@@ -86,7 +109,9 @@ namespace WinRT
             return rcw switch
             {
                 ABI.System.Nullable nt => (T)nt.Value,
-                _ => (T)rcw
+                T castRcw => castRcw,
+                _ when tryUseCache => CreateRcwForComObject<T>(ptr, false),
+                _ => throw new ArgumentException(string.Format("Unable to create a wrapper object. The WinRT object {0} has type {1} which cannot be assigned to type {2}", ptr, rcw.GetType(), typeof(T)))
             };
         }
 
@@ -107,7 +132,7 @@ namespace WinRT
                 return TryUnwrapObject(del.Target, out objRef);
             }
 
-            var objRefFunc = TypeObjectRefFuncCache.GetOrAdd(o.GetType(), (type) =>
+            var objRefFunc = TypeObjectRefFuncCache.GetOrAdd(o.GetType(), static (type) =>
             {
                 ObjectReferenceWrapperAttribute objRefWrapper = type.GetCustomAttribute<ObjectReferenceWrapperAttribute>();
                 if (objRefWrapper is object)
@@ -336,7 +361,7 @@ namespace WinRT
 
             InitializeManagedQITable(interfaceTableEntries);
 
-            IdentityPtr = _managedQITable[IUnknownVftbl.IID];
+            IdentityPtr = _managedQITable[IID.IID_IUnknown];
         }
 
         ~ComCallableWrapper()

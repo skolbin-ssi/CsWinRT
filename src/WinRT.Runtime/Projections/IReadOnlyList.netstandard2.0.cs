@@ -221,15 +221,15 @@ namespace ABI.System.Collections.Generic
             internal _get_PropertyAsUInt32 get_Size_1;
             public global::System.Delegate IndexOf_2;
             public IReadOnlyList_Delegates.GetMany_3 GetMany_3;
-            public static Guid PIID = GuidGenerator.CreateIID(typeof(IReadOnlyList<T>));
-            private static readonly Type GetAt_0_Type = Expression.GetDelegateType(new Type[] { typeof(void*), typeof(uint), Marshaler<T>.AbiType.MakeByRefType(), typeof(int) });
-            private static readonly Type IndexOf_2_Type = Expression.GetDelegateType(new Type[] { typeof(void*), Marshaler<T>.AbiType, typeof(uint).MakeByRefType(), typeof(byte).MakeByRefType(), typeof(int) });
+            public static readonly Guid PIID = GuidGenerator.CreateIIDUnsafe(typeof(IReadOnlyList<T>));
+            private static readonly Type GetAt_0_Type = Projections.GetAbiDelegateType(new Type[] { typeof(void*), typeof(uint), Marshaler<T>.AbiType.MakeByRefType(), typeof(int) });
+            private static readonly Type IndexOf_2_Type = Projections.GetAbiDelegateType(new Type[] { typeof(void*), Marshaler<T>.AbiType, typeof(uint).MakeByRefType(), typeof(byte).MakeByRefType(), typeof(int) });
 
             internal unsafe Vftbl(IntPtr thisPtr)
             {
-                var vftblPtr = Marshal.PtrToStructure<VftblPtr>(thisPtr);
-                var vftbl = (IntPtr*)vftblPtr.Vftbl;
-                IInspectableVftbl = Marshal.PtrToStructure<IInspectable.Vftbl>(vftblPtr.Vftbl);
+                var vftblPtr = *(void***)thisPtr;
+                var vftbl = (IntPtr*)vftblPtr;
+                IInspectableVftbl = *(IInspectable.Vftbl*)vftblPtr;
                 GetAt_0 = Marshal.GetDelegateForFunctionPointer(vftbl[6], GetAt_0_Type);
                 get_Size_1 = Marshal.GetDelegateForFunctionPointer<_get_PropertyAsUInt32>(vftbl[7]);
                 IndexOf_2 = Marshal.GetDelegateForFunctionPointer(vftbl[8], IndexOf_2_Type);
@@ -356,7 +356,7 @@ namespace ABI.System.Collections.Generic
             var vftblT = new Vftbl(thisPtr);
             return ObjectReference<Vftbl>.FromAbi(thisPtr, vftblT);
         }
-        public static Guid PIID = Vftbl.PIID;
+        public static readonly Guid PIID = Vftbl.PIID;
 
         public static implicit operator IReadOnlyList<T>(IObjectReference obj) => (obj != null) ? new IReadOnlyList<T>(obj) : null;
         public static implicit operator IReadOnlyList<T>(ObjectReference<Vftbl> obj) => (obj != null) ? new IReadOnlyList<T>(obj) : null;
@@ -380,6 +380,7 @@ namespace ABI.System.Collections.Generic
             try
             {
                 _obj.Vftbl.GetAt_0.DynamicInvokeAbi(__params);
+                GC.KeepAlive(_obj);
                 return Marshaler<T>.FromAbi(__params[2]);
             }
             finally
@@ -397,6 +398,7 @@ namespace ABI.System.Collections.Generic
                 __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[1] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.IndexOf_2.DynamicInvokeAbi(__params);
+                GC.KeepAlive(_obj);
                 index = (uint)__params[2];
                 return (byte)__params[3] != 0;
             }
@@ -417,6 +419,7 @@ namespace ABI.System.Collections.Generic
                 __items = Marshaler<T>.CreateMarshalerArray(items);
                 (__items_length, __items_data) = Marshaler<T>.GetAbiArray(__items);
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.GetMany_3(ThisPtr, startIndex, __items_length, __items_data, out __retval));
+                GC.KeepAlive(_obj);
                 items = Marshaler<T>.FromAbiArray((__items_length, __items_data));
                 return __retval;
             }
@@ -432,6 +435,7 @@ namespace ABI.System.Collections.Generic
             {
                 uint __retval = default;
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.get_Size_1(ThisPtr, out __retval));
+                GC.KeepAlive(_obj);
                 return __retval;
             }
         }

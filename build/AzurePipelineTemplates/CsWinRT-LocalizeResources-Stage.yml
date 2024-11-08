@@ -3,8 +3,6 @@ stages:
   displayName: Call TDBuild to Localize Resources
   jobs:
   - job: Localize
-    pool: 
-      vmImage: windows-2022
     timeoutInMinutes: 90
     steps:
     - checkout: self
@@ -17,31 +15,28 @@ stages:
         git config --global user.name "TDBuild"
 
     # Download x64
-    - task: DownloadBuildArtifacts@0
+    - task: DownloadPipelineArtifact@2
       displayName: Download x64
       inputs:
         artifactName: release_x64
         itemPattern: ''
-        downloadPath: $(Build.SourcesDirectory)
-        extractTars: false
+        targetPath: $(Build.SourcesDirectory)\release_x64
 
     # Download RESX
-    - task: DownloadBuildArtifacts@0
+    - task: DownloadPipelineArtifact@2
       displayName: Download ResX
       inputs:
         artifactName: ResX
         itemPattern: ''
-        downloadPath: $(Build.SourcesDirectory)
-        extractTars: false
+        targetPath: $(Build.SourcesDirectory)\ResX
 
     # Run TouchdownBuild
-    - task: TouchdownBuildTask@1
+    - task: TouchdownBuildTask@4
       inputs:
         environment: 'PRODEXT'
-        teamId: $(CsWinRTTDBuildTeamID)
-        authType: 'OAuth'
-        authId: $(CsWinRTTDBuildAuthID)
-        authKey: $(CsWinRTTDBuildAuthKey)
+        teamId: 31600
+        authType: 'FederatedIdentity'
+        FederatedIdentityServiceConnection: 'CsWinrtTdbuild'
         localizationTarget: true
         isPreview: false
         resourceFilePath: |
@@ -51,13 +46,17 @@ stages:
         outputDirectoryRoot: $(LocOutputDir) 
         appendRelativeDir: true
         cultureMappingType: 'None'
-        gitAction: NONE 
 
     # Sign TDBuild Output
-    - task: EsrpCodeSigning@1
+    - task: EsrpCodeSigning@5
       displayName: ESRP CodeSigning
       inputs:
-        ConnectedServiceName: 81cc6790-027c-4ef3-928d-65e8b96a691a
+        ConnectedServiceName: $(SigningServiceName)
+        AppRegistrationClientId: $(SigningAppId)
+        AppRegistrationTenantId: $(SigningTenantId)
+        AuthAKVName: $(SigningAKVName)
+        AuthCertName: $(SigningAuthCertName)
+        AuthSignCertName: $(SigningSignCertName)
         FolderPath: $(LocOutputDir)
         Pattern: |
           release_x64\de-DE\WinRT.Host.dll.mui
@@ -114,9 +113,10 @@ stages:
         TargetFolder: $(Build.ArtifactStagingDirectory)\loc
 
     # Publish TDBuild Output
-    - task: PublishBuildArtifacts@1
-      displayName: Publish TouchdownBuild Output
-      condition: succeeded()
-      inputs:
-        PathtoPublish: $(Build.ArtifactStagingDirectory)\loc
-        ArtifactName: LocalizedResources
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        displayName: 'Publish TouchdownBuild Output'
+        condition: succeeded()
+        targetPath: $(Build.ArtifactStagingDirectory)\loc
+        artifactName: LocalizedResources

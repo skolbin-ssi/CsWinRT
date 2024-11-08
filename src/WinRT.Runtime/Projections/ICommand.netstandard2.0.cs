@@ -5,6 +5,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using ABI.WinRT.Interop;
 using WinRT;
 using WinRT.Interop;
 
@@ -161,6 +162,7 @@ namespace ABI.System.Windows.Input
             {
                 __parameter = MarshalInspectable<object>.CreateMarshaler2(parameter);
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.CanExecute_2(ThisPtr, MarshalInspectable<object>.GetAbi(__parameter), out __retval));
+                GC.KeepAlive(_obj);
                 return __retval != 0;
             }
             finally
@@ -176,6 +178,7 @@ namespace ABI.System.Windows.Input
             {
                 __parameter = MarshalInspectable<object>.CreateMarshaler2(parameter);
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.Execute_3(ThisPtr, MarshalInspectable<object>.GetAbi(__parameter)));
+                GC.KeepAlive(_obj);
             }
             finally
             {

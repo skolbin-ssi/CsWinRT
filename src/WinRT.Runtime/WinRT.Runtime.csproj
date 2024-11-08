@@ -4,7 +4,7 @@
     <TargetFrameworks>$(LibBuildTFMs)</TargetFrameworks>
     <RootNamespace>WinRT</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <LangVersion>9</LangVersion>
+    <LangVersion>11.0</LangVersion>
     <DebugType>full</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <Authors>Microsoft Corporation</Authors>
@@ -13,7 +13,6 @@
     <PackageId>WinRT.Runtime</PackageId>
     <FileVersion>$(VersionNumber)</FileVersion>
     <Version>$(VersionNumber)</Version>
-    <AssemblyVersion>$(AssemblyVersionNumber)</AssemblyVersion>
     <InformationalVersion>$(VersionNumber)</InformationalVersion>
     <NeutralLanguage>en</NeutralLanguage>
     <Description>C#/WinRT Runtime v$(VersionString)</Description>
@@ -23,10 +22,46 @@
     <AssemblyOriginatorKeyFile>key.snk</AssemblyOriginatorKeyFile>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <IsTrimmable>true</IsTrimmable>
+    <DefineConstants>$(DefineConstants);CsWinRT_LANG_11_FEATURES</DefineConstants>
+    <!-- Set remote for source link. -->
+    <AdoMirrorBuild Condition="'$(AdoMirrorBuild)' == ''">false</AdoMirrorBuild>
+    <GitRepositoryRemoteName Condition="$(AdoMirrorBuild)">github</GitRepositoryRemoteName>
   </PropertyGroup>
+	
+  <!-- Keep assembly version constant for .NET 6 as new APIs are added for the .NET 8 version. -->
+  <PropertyGroup Condition="'$(TargetFramework)' != 'net6.0'">
+    <AssemblyVersion>$(AssemblyVersionNumber)</AssemblyVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net6.0'">
+    <AssemblyVersion>2.1.0.0</AssemblyVersion>
+  </PropertyGroup>
+
+  <!-- NativeAOT specific options, only starting from .NET 8 -->
+  <PropertyGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- Include the ILLink file (to properly trim configuration switches in publish builds) -->
+  <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net6.0'))">
+    <EmbeddedResource Include="Configuration\ILLink.Substitutions.xml" LogicalName="ILLink.Substitutions.xml" />
+  </ItemGroup>
+
+  <!-- Import all .tt files with their generated .g.cs files (the T4 service is imported in the .props file) -->
+  <ItemGroup>
+    <None Update="**\*.tt">
+      <LastGenOutput>%(Filename).g.cs</LastGenOutput>
+      <Generator>TextTemplatingFileGenerator</Generator>
+    </None>
+    <Compile Update="**\*.g.cs">
+      <DependentUpon>$([System.IO.Path]::GetFileNameWithoutExtension('%(Filename)')).tt</DependentUpon>
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+    </Compile>
+  </ItemGroup>
     
   <ItemGroup>
-    <Compile Include="../cswinrt/strings/WinRT*.cs" Link="cswinrt/%(FileName)%(Extension)" />
+    <Compile Include="../cswinrt/strings/InitalizeProjection.cs" Link="cswinrt/InitalizeProjection.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
@@ -42,7 +77,7 @@
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.5.4" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
     <PackageReference Include="System.Runtime.Extensions" Version="4.3.1" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
   <!-- API Compat -->
@@ -51,35 +86,25 @@
     <RunApiCompatForSrc>true</RunApiCompatForSrc>
     <RunMatchingRefApiCompat>true</RunMatchingRefApiCompat>
     <ApiCompatEnforceOptionalRules>true</ApiCompatEnforceOptionalRules>
-    <CsWinRTApiCompatVersion>1.0.1</CsWinRTApiCompatVersion>
+    <CsWinRTApiCompatVersion>2.1.1</CsWinRTApiCompatVersion>
     <ApiCompatArgs>$(ApiCompatArgs) --allow-default-interface-methods</ApiCompatArgs>
     <MatchingRefApiCompatArgs>$(MatchingRefApiCompatArgs) --allow-default-interface-methods</MatchingRefApiCompatArgs>
   </PropertyGroup> 
   
-  <ItemGroup Condition="'$(TargetFramework)' == 'net5.0'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net6.0' or '$(TargetFramework)' == 'net8.0'">
     <PackageReference Include="Microsoft.DotNet.ApiCompat" Version="5.0.0-beta.20560.3" PrivateAssets="All" />
     <PackageDownload Include="Microsoft.Windows.CsWinRT" Version="[$(CsWinRTApiCompatVersion)]" />
   </ItemGroup> 
   
+  <!-- T4 template generation service (the .tt/.g.cs files are resolved in the .targets file) -->
   <ItemGroup>
-    <Compile Update="WinRTRuntimeErrorStrings.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>WinRTRuntimeErrorStrings.resx</DependentUpon>
-    </Compile>
-  </ItemGroup> 
-  
-  <ItemGroup>
-    <EmbeddedResource Update="WinRTRuntimeErrorStrings.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>WinRTRuntimeErrorStrings.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
+    <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
   </ItemGroup>
 
-  <Target Name="_ResolveResolvedMatchingContract" BeforeTargets="ValidateApiCompatForSrc;RunMatchingRefApiCompat" Condition="'$(TargetFramework)' == 'net5.0'">
+  <Target Name="_ResolveResolvedMatchingContract" BeforeTargets="ValidateApiCompatForSrc;RunMatchingRefApiCompat" Condition="'$(TargetFramework)' == 'net6.0' or '$(TargetFramework)' == 'net8.0'">
     <ItemGroup>
       <_ReferencePathDirectories Include="@(ReferencePath -> '%(RootDir)%(Directory)')" />
-      <ResolvedMatchingContract Include="$(NuGetPackageRoot)\Microsoft.Windows.CsWinRT\$(CsWinRTApiCompatVersion)\lib\net5.0\$(TargetFileName)">
+      <ResolvedMatchingContract Include="$(NuGetPackageRoot)\Microsoft.Windows.CsWinRT\$(CsWinRTApiCompatVersion)\lib\$(TargetFramework)\$(TargetFileName)">
         <DependencyPaths>@(_ReferencePathDirectories-&gt;Distinct(), ',')</DependencyPaths>
       </ResolvedMatchingContract>
     </ItemGroup>

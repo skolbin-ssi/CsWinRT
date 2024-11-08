@@ -125,10 +125,20 @@ namespace TestComponentCSharp
         void AddUriHandler(ProvideUri provideUri);
     };
 
+    interface IBoolChanged
+    {
+        void InvokeBoolChanged(Windows.Foundation.EventHandler<Boolean> boolChanged);
+    };
+
     static runtimeclass ComImports
     {
         static Object MakeObject();
         static Int32 NumObjects{ get; };
+    }
+
+    interface IDerivedGenericInterface requires Microsoft.UI.Xaml.Input.ICommand, Microsoft.UI.Xaml.Interop.INotifyCollectionChanged, Windows.Foundation.Collections.IPropertySet
+    {
+        Int32 Number;
     }
 
     interface ISingleton
@@ -153,6 +163,7 @@ namespace TestComponentCSharp
         , Microsoft.UI.Xaml.Input.ICommand 
         //, Windows.Foundation.Collections.IVector<String>
         //, Windows.Foundation.Collections.IMap<Int32, String>
+        , IBoolChanged
     {
         // factory
         Class();
@@ -195,6 +206,7 @@ namespace TestComponentCSharp
         event EventWithReturn ReturnEvent;
         Int32 InvokeReturnEvent(Int32 arg0);
         Guid TestReturnGuid(Guid arg);
+        event Microsoft.UI.Xaml.Data.PropertyChangedEventHandler PropertyChangedEventHandler;
 
         Int32 IntProperty;
         event Windows.Foundation.EventHandler<Int32> IntPropertyChanged;
@@ -303,6 +315,10 @@ namespace TestComponentCSharp
         Int32[] GetInts();
         void FillInts(ref Int32[] ints);
 
+        Windows.Foundation.HResult[] GetAndSetHResults(Windows.Foundation.HResult[] hresults);
+        Windows.Foundation.Uri[] GetAndSetUris(Windows.Foundation.Uri[] uris);
+        Windows.Foundation.DateTime[] GetAndSetDateTimes(Windows.Foundation.DateTime[] datetime);
+
         // Generics
         Windows.Foundation.IAsyncOperation<Int32> GetIntAsync();
         Windows.Foundation.IAsyncOperationWithProgress<String, Int32> GetStringAsync();
@@ -314,6 +330,14 @@ namespace TestComponentCSharp
         Windows.Foundation.Collections.IVectorView<Object> GetObjectVector();
         Windows.Foundation.Collections.IVectorView<IProperties1> GetInterfaceVector();
         [noexcept] Windows.Foundation.Collections.IVectorView<Class> GetClassVector();
+        Windows.Foundation.Collections.IVector<Int32> GetIntVector2();
+        Windows.Foundation.Collections.IVector<ComposedBlittableStruct> GetBlittableStructVector2();
+        Windows.Foundation.Collections.IVector<ComposedNonBlittableStruct> GetNonBlittableStructVector2();
+
+        Windows.Foundation.Collections.IMap<Int32, Int32> GetIntToIntDictionary();
+        Windows.Foundation.Collections.IMap<String, ComposedBlittableStruct> GetStringToBlittableDictionary();
+        Windows.Foundation.Collections.IMap<String, ComposedNonBlittableStruct> GetStringToNonBlittableDictionary();
+        Windows.Foundation.Collections.IMap<ComposedBlittableStruct, Object> GetBlittableToObjectDictionary();
 
         // Test IIDOptimizer
         Windows.Foundation.Collections.IVectorView<Microsoft.UI.Xaml.Data.DataErrorsChangedEventArgs> GetEventArgsVector();
@@ -321,6 +345,11 @@ namespace TestComponentCSharp
         
         Windows.Foundation.Collections.IIterable<Int32> GetIntIterable();
         void SetIntIterable(Windows.Foundation.Collections.IIterable<Int32> value);
+        void SetCharIterable(Windows.Foundation.Collections.IIterable<Char> value);
+        Windows.Foundation.Collections.IIterable<EnumValue> GetEnumIterable();
+        Windows.Foundation.Collections.IIterable<CustomDisposableTest> GetClassIterable();
+
+        Windows.Foundation.Collections.IIterator<Int32> GetIteratorForCollection(Windows.Foundation.Collections.IIterable<Int32> iterable);
 
         // Bindable
         Microsoft.UI.Xaml.Interop.IBindableIterable BindableIterableProperty;
@@ -334,6 +363,20 @@ namespace TestComponentCSharp
         event Windows.Foundation.EventHandler<Microsoft.UI.Xaml.Interop.IBindableVector> BindableVectorPropertyChanged;
         
         Microsoft.UI.Xaml.Interop.IBindableObservableVector BindableObservableVectorProperty;
+        Microsoft.UI.Xaml.Interop.IBindableObservableVector GetBindableObservableVector(Microsoft.UI.Xaml.Interop.IBindableObservableVector vector);
+
+        Boolean ValidateBindableProperty(
+            Object bindableObject,
+            String property,
+            Windows.UI.Xaml.Interop.TypeName indexerType,
+            Boolean validateOnlyExists,
+            Boolean canRead,
+            Boolean canWrite,
+            Boolean isIndexer,
+            Windows.UI.Xaml.Interop.TypeName type,
+            Object indexerValue,
+            Object setValue,
+            out Object retrievedValue);
 
         void CopyProperties(IProperties1 src);
         void CopyPropertiesViaWeakReference(IProperties1 src);
@@ -370,6 +413,7 @@ namespace TestComponentCSharp
         Windows.Foundation.Numerics.Vector2 Vector2Property;
         Windows.Foundation.Numerics.Vector3 Vector3Property;
         Windows.Foundation.Numerics.Vector4 Vector4Property;
+        Windows.Foundation.IReference<Windows.Foundation.Numerics.Vector3> Vector3NullableProperty;
 
         // Structs mapped to equivalent ones in the System namespace
         Windows.Foundation.TimeSpan TimeSpanProperty;
@@ -379,22 +423,33 @@ namespace TestComponentCSharp
         // HResult->Exception type mapping
         Windows.Foundation.HResult HResultProperty;
 
+        Double Calculate(Windows.Foundation.Collections.IVector<Windows.Foundation.IReference<Double> > values);
+        Windows.Foundation.Collections.IVector<Windows.Foundation.IReference<Int32> > GetNullableIntList();
+
         // Boxing
         static Int32 UnboxInt32(Object obj);
         static Boolean UnboxBoolean(Object obj);
         static String UnboxString(Object obj);
         static ProvideInt UnboxDelegate(Object obj);
         static EnumValue UnboxEnum(Object obj);
+        static Windows.UI.Xaml.Interop.TypeName UnboxType(Object obj);
         static Int32[] UnboxInt32Array(Object obj);
         static Boolean[] UnboxBooleanArray(Object obj);
         static String[] UnboxStringArray(Object obj);
         static Object BoxedDelegate{ get; };
         static Object BoxedEnum{ get; };
+        static Object BoxedEventHandler{ get; };
+        static void UnboxAndCallProgressHandler(Object httpProgressHandler);
+
+        static Int32 GetPropertyType(Object obj);
+        static String GetName(Object obj);
 
         // WUX.Interop.TypeName -> System.Type mapping
         static Windows.UI.Xaml.Interop.TypeName Int32Type { get; };
         static Windows.UI.Xaml.Interop.TypeName ThisClassType { get; };
         static Windows.UI.Xaml.Interop.TypeName ReferenceInt32Type { get; };
+        static Object BoxedType{ get; };
+        static Windows.Foundation.Collections.IVector<Windows.UI.Xaml.Interop.TypeName> ListOfTypes{ get; };
 
         static Boolean VerifyTypeIsInt32Type(Windows.UI.Xaml.Interop.TypeName type);
         static Boolean VerifyTypeIsThisClassType(Windows.UI.Xaml.Interop.TypeName type);
@@ -412,6 +467,7 @@ namespace TestComponentCSharp
         static IProperties1 NativeProperties1{ get; };
         static Object ServiceProvider{ get; };
         static Object ComInterop{ get; };
+        static Windows.Foundation.Collections.IPropertySet PropertySet{ get; };
 
         // INotifyDataErrorInfo
         void RaiseDataErrorChanged();
@@ -456,6 +512,28 @@ namespace TestComponentCSharp
         CustomBindableVectorTest();
     }
 
+    [default_interface]
+    runtimeclass CustomBindableObservableVectorTest : Microsoft.UI.Xaml.Interop.IBindableObservableVector
+    {
+        CustomBindableObservableVectorTest();
+    }
+
+    [default_interface]
+    runtimeclass CustomIteratorTest : Windows.Foundation.Collections.IIterator<Int32>
+    {
+        CustomIteratorTest();
+        CustomIteratorTest(Windows.Foundation.Collections.IIterator<Int32> iterator);
+    }
+
+    [default_interface]
+    runtimeclass CustomIterableTest : Windows.Foundation.Collections.IIterable<Int32>
+    {
+        CustomIterableTest();
+        CustomIterableTest(Windows.Foundation.Collections.IIterable<Int32> iterable);
+
+        static CustomIterableTest CreateWithCustomIterator();
+    }
+
     // SupportedOSPlatform warning tests
     [contract(Windows.Foundation.UniversalApiContract, 10)]
     [attributeusage(target_all)]
@@ -484,11 +562,13 @@ namespace TestComponentCSharp
         static void Method();
         static Int32 Property;
         static event Windows.Foundation.EventHandler<Int32> Event;
+        static Int32 ReadWriteProperty{ get; };
         [contract(Windows.Foundation.UniversalApiContract, 10)]
         {
             static void WarningMethod();
             static Int32 WarningProperty;
             static event Windows.Foundation.EventHandler<Int32> WarningEvent;
+            static Int32 ReadWriteProperty{ set; };
         }
     }
     
@@ -603,6 +683,14 @@ And this is another one"
         void f();
     }
 
+    [default_interface]
+    runtimeclass ClassWithExplicitIUnknown
+    {
+        ClassWithExplicitIUnknown();
+        ClassWithExplicitIUnknown(Int32 defaultValue);
+        Int32 Value{ get; set; };
+    }
+
     // Compile time test for sub windows namespace
     namespace Windows
     {
@@ -629,6 +717,18 @@ And this is another one"
         };
     }
 
+    // Compile time test for sub WinRT namespace
+    namespace WinRT
+    {
+        runtimeclass Class
+        {
+            Class();
+            static void StaticMethod();
+            void Method();
+            void Method2(Windows.Foundation.IStringable stringable);
+        }
+    }
+
     namespace AnotherAssembly
     {
         [default_interface]
@@ -636,6 +736,21 @@ And this is another one"
         {
             SetPropertyClass();
             Int32 ReadWriteProperty{ set; };
+        }
+    }
+
+    namespace TestPublicExclusiveTo
+    {
+        interface IRegularInterface
+        {
+            Int32 Type { get; };
+        }
+    
+        // This is a test for runtimeclass which can be have its interfaces implemented by other consumers
+        unsealed runtimeclass NonUniqueClass : IRegularInterface
+        {
+            String Path{ get; };
+            static Int32 StaticProperty { get; };
         }
     }
 }

@@ -103,6 +103,24 @@
   <data name="ClassConstructorRule_Text" xml:space="preserve">
     <value>Classes cannot have multiple constructors of the same arity in the Windows Runtime, class {0} has multiple {1}-arity constructors</value>
   </data>
+  <data name="ClassImplementsOldProjection_Brief" xml:space="preserve">
+    <value>Class not trimming / AOT compatible</value>
+  </data>
+  <data name="ClassImplementsOldProjection_Text" xml:space="preserve">
+    <value>Class '{0}' implements WinRT interface(s) {1} generated using an older version of CsWinRT.  Update to a projection generated using CsWinRT 2.1.0 or later for trimming and AOT compatibility.</value>
+  </data>
+  <data name="ClassOldProjectionMultipleInstances_Text" xml:space="preserve">
+    <value>Class '{0}' was generated using an older version of CsWinRT and due to the type being defined in multiple DLLs, CsWinRT can not generate compat code to make it trimming safe.  Update to a projection generated using CsWinRT 2.1.0 or later for trimming and AOT compatibility.</value>
+  </data>
+  <data name="ClassNotMarkedPartial_Brief" xml:space="preserve">
+    <value>Class is not marked partial</value>
+  </data>
+  <data name="ClassNotMarkedPartial_Text" xml:space="preserve">
+    <value>Class '{0}' implements WinRT interfaces but it or a parent type isn't marked partial.  Type and any parent types should be marked partial for trimming and AOT compatibility if passed across the WinRT ABI.</value>
+  </data>
+  <data name="BindableCustomPropertyClassNotMarkedPartial_Text" xml:space="preserve">
+    <value>Class '{0}' has attribute GeneratedBindableCustomProperty but it or a parent type isn't marked partial.  Type and any parent types should be marked partial to allow source generation for trimming and AOT compatibility.</value>
+  </data>	
   <data name="DisjointNamespaceRule_Brief" xml:space="preserve">
     <value>Namespace is disjoint from main (winmd) namespace</value>
   </data>
@@ -113,6 +131,12 @@
   <data name="DisjointNamespaceRule_Text2" xml:space="preserve">
     <value>All types within a Windows Metadata file must exist in a sub namespace of the namespace that is implied by the file name.</value>
     <comment>"sub namespace" means a namespace defined within another namespace</comment>
+  </data>
+  <data name="EnableUnsafe_Brief" xml:space="preserve">
+    <value>Project does not enable unsafe blocks</value>
+  </data>
+  <data name="EnableUnsafe_Text" xml:space="preserve">
+    <value>Type '{0}' implements generic WinRT interfaces which requires generated code using unsafe for trimming and AOT compatibility if passed across the WinRT ABI. Project needs to be updated with '&lt;AllowUnsafeBlocks&gt;true&lt;/AllowUnsafeBlocks&gt;'.</value>
   </data>
   <data name="GenericTypeRule_Brief" xml:space="preserve">
     <value>Class (or interface) is generic</value>

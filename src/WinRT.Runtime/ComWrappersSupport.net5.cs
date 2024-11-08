@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -35,14 +35,13 @@ namespace WinRT
             }
         }
 
-        internal static readonly ConditionalWeakTable<Type, InspectableInfo> InspectableInfoTable = new ConditionalWeakTable<Type, InspectableInfo>();
+        internal static readonly ConditionalWeakTable<Type, InspectableInfo> InspectableInfoTable = new();
         
         [ThreadStatic]
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.NonPublicConstructors)]
         internal static Type CreateRCWType;
 
         private static ComWrappers _comWrappers;
-        private static object _comWrappersLock = new object();
+        private static readonly object _comWrappersLock = new object();
         private static ComWrappers ComWrappers
         {
             get
@@ -86,12 +85,12 @@ namespace WinRT
             return InspectableInfoTable.GetValue(_this.GetType(), o => PregenerateNativeTypeInformation(o).inspectableInfo);
         }
 
-        public static T CreateRcwForComObject<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(IntPtr ptr)
+        public static T CreateRcwForComObject<T>(IntPtr ptr)
         {
             return CreateRcwForComObject<T>(ptr, true);
         }
 
-        private static T CreateRcwForComObject<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(IntPtr ptr, bool tryUseCache)
+        private static T CreateRcwForComObject<T>(IntPtr ptr, bool tryUseCache)
         {
             if (ptr == IntPtr.Zero)
             {
@@ -114,12 +113,6 @@ namespace WinRT
             // and consumers get a string object for a Windows.Foundation.IReference<String>.
             // We need to do the same thing for System.Type because there can be multiple WUX.Interop.TypeName's
             // for a single System.Type.
-
-            // Resurrect IWinRTObject's disposed IObjectReferences, if necessary
-            if (rcw is IWinRTObject winrtObj)
-            {
-                winrtObj.Resurrect();
-            }
 
             return rcw switch
             {
@@ -154,48 +147,59 @@ namespace WinRT
 
         public static void RegisterObjectForInterface(object obj, IntPtr thisPtr, CreateObjectFlags createObjectFlags) =>
             ComWrappers.GetOrRegisterObjectForComInstance(thisPtr, createObjectFlags, obj);
+        
+        internal static void RegisterObjectForInterface(object obj, IntPtr thisPtr, IntPtr inner, CreateObjectFlags createObjectFlags) => 
+            ComWrappers.GetOrRegisterObjectForComInstance(thisPtr, createObjectFlags, obj, inner);
 
         public static void RegisterObjectForInterface(object obj, IntPtr thisPtr) => 
             TryRegisterObjectForInterface(obj, thisPtr);
 
         public static object TryRegisterObjectForInterface(object obj, IntPtr thisPtr)
         {
-            var rcw = ComWrappers.GetOrRegisterObjectForComInstance(thisPtr, CreateObjectFlags.TrackerObject, obj);
+            return ComWrappers.GetOrRegisterObjectForComInstance(thisPtr, CreateObjectFlags.TrackerObject, obj);
+        }
 
-            // Resurrect IWinRTObject's disposed IObjectReferences, if necessary
-            var target = rcw is Delegate del ? del.Target : rcw;
-            if (target is IWinRTObject winrtObj)
-            {
-                winrtObj.Resurrect();
-            }
-            return rcw;
+        internal static IntPtr CreateCCWForObjectUnsafe(object obj)
+        {
+            return ComWrappers.GetOrCreateComInterfaceForObject(obj, CreateComInterfaceFlags.TrackerSupport);
         }
 
         public static IObjectReference CreateCCWForObject(object obj)
         {
             IntPtr ccw = ComWrappers.GetOrCreateComInterfaceForObject(obj, CreateComInterfaceFlags.TrackerSupport);
-            return ObjectReference<IUnknownVftbl>.Attach(ref ccw);
+            return ObjectReference<IUnknownVftbl>.Attach(ref ccw, IID.IID_IUnknown);
         }
 
         internal static IntPtr CreateCCWForObjectForABI(object obj, Guid iid)
         {
             IntPtr ccw = ComWrappers.GetOrCreateComInterfaceForObject(obj, CreateComInterfaceFlags.TrackerSupport);
-            try
+
+            int hr = Marshal.QueryInterface(ccw, ref iid, out var iidCcw);
+
+            Marshal.Release(ccw);
+
+            if (hr < 0)
             {
-                Marshal.ThrowExceptionForHR(Marshal.QueryInterface(ccw, ref iid, out var iidCcw));
-                return iidCcw;
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                static void ThrowException(object obj, Guid iid, int hr)
+                {
+                    // Special case 'E_NOINTERFACE' to provide a better exception message
+                    if (hr == ExceptionHelpers.E_NOINTERFACE)
+                    {
+                        throw new InvalidCastException($"Failed to create a CCW for object of type '{obj.GetType()}' for interface with IID '{iid.ToString().ToUpperInvariant()}': the specified cast is not valid.");
+                    }
+
+                    ExceptionHelpers.ThrowExceptionForHR(hr);
+                }
+
+                ThrowException(obj, iid, hr);
             }
-            finally
-            {
-                MarshalInspectable<object>.DisposeAbi(ccw);
-            }
+
+            return iidCcw;
         }
 
         public static unsafe T FindObject<T>(IntPtr ptr)
             where T : class => ComInterfaceDispatch.GetInstance<T>((ComInterfaceDispatch*)ptr);
-
-        private static T FindDelegate<T>(IntPtr thisPtr)
-            where T : class, System.Delegate => FindObject<T>(thisPtr);
 
         public static IUnknownVftbl IUnknownVftbl => DefaultComWrappers.IUnknownVftbl;
         public static IntPtr IUnknownVftblPtr => DefaultComWrappers.IUnknownVftblPtr;
@@ -215,13 +219,22 @@ namespace WinRT
             ComWrappers = wrappers;
         }
 
-        internal static Func<IInspectable, object> GetTypedRcwFactory([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.NonPublicConstructors)] Type implementationType) => TypedObjectFactoryCacheForType.GetOrAdd(implementationType, classType => CreateTypedRcwFactory(classType));
-        
-        private static Func<IInspectable, object> CreateFactoryForImplementationType(string runtimeClassName, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.NonPublicConstructors)] Type implementationType)
+        internal static Func<IInspectable, object> GetTypedRcwFactory(Type implementationType) => TypedObjectFactoryCacheForType.GetOrAdd(implementationType, CreateTypedRcwFactory);
+
+        public static bool RegisterTypedRcwFactory(Type implementationType, Func<IInspectable, object> rcwFactory) => TypedObjectFactoryCacheForType.TryAdd(implementationType, rcwFactory);
+
+        private static Func<IInspectable, object> CreateFactoryForImplementationType(string runtimeClassName, Type implementationType)
         {
             if (implementationType.IsGenericType)
             {
+                if (!RuntimeFeature.IsDynamicCodeCompiled)
+                {
+                    throw new NotSupportedException($"Cannot create an RCW factory for implementation type '{implementationType}'.");
+                }
+
+#pragma warning disable IL3050 // https://github.com/dotnet/runtime/issues/97273
                 Type genericImplType = GetGenericImplType(implementationType);
+#pragma warning restore IL3050
                 if (genericImplType != null)
                 {
                     var createRcw = genericImplType.GetMethod("CreateRcw", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(IInspectable) }, null);
@@ -234,9 +247,42 @@ namespace WinRT
                 return obj => obj;
             }
 
-            var constructor = implementationType.GetConstructor(BindingFlags.NonPublic | BindingFlags.CreateInstance | BindingFlags.Instance, null, new[] { typeof(IObjectReference) }, null);
-            return (IInspectable obj) => constructor.Invoke(new[] { obj.ObjRef });
+            // We never look for attributes on base types, since each [WinRTImplementationTypeRcwFactory] type acts as
+            // a factory type specifically for the annotated implementation type, so it has to be on that derived type.
+            var attribute = implementationType.GetCustomAttribute<WinRTImplementationTypeRcwFactoryAttribute>(inherit: false);
 
+            // For update projections, get the derived [WinRTImplementationTypeRcwFactory]
+            // attribute instance and use its overridden 'CreateInstance' method as factory.
+            if (attribute is not null)
+            {
+                return attribute.CreateInstance;
+            }
+
+            if (!RuntimeFeature.IsDynamicCodeCompiled)
+            {
+                throw new NotSupportedException(
+                    $"Cannot create an RCW factory for implementation type '{implementationType}', because it doesn't have " +
+                    "a [WinRTImplementationTypeRcwFactory] derived attribute on it. The fallback path for older projections " +
+                    "is not trim-safe, and isn't supported in AOT environments. Make sure to reference updated projections.");
+            }
+
+            return CreateRcwFallback(implementationType);
+
+            [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "This fallback path is not trim-safe by design (to avoid annotations).")]
+            static Func<IInspectable, object> CreateRcwFallback(Type implementationType)
+            {
+                var constructor = implementationType.GetConstructor(
+                    bindingAttr: BindingFlags.NonPublic | BindingFlags.CreateInstance | BindingFlags.Instance,
+                    binder: null,
+                    types: new[] { typeof(IObjectReference) },
+                    modifiers: null);
+
+                return (IInspectable obj) => constructor.Invoke(new[] { obj.ObjRef });
+            }
+
+#if NET8_0_OR_GREATER
+            [RequiresDynamicCode(AttributeMessages.MarshallingOrGenericInstantiationsRequiresDynamicCode)]
+#endif
             [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)]
             static Type GetGenericImplType(Type implementationType)
             {
@@ -263,6 +309,10 @@ namespace WinRT
                 {
                     genericImplType = typeof(IEnumerableImpl<>);
                 }
+                else if (genericType == typeof(IEnumerator<>))
+                {
+                    genericImplType = typeof(IEnumeratorImpl<>);
+                }
                 else
                 {
                     return null;
@@ -271,6 +321,57 @@ namespace WinRT
                 return genericImplType.MakeGenericType(implementationType.GetGenericArguments());
             }
         }
+
+        private static readonly List<Func<Type, ComInterfaceEntry[]>> ComInterfaceEntriesLookup = new();
+
+        public static void RegisterTypeComInterfaceEntriesLookup(Func<Type, ComInterfaceEntry[]> comInterfaceEntriesLookup)
+        {
+            ComInterfaceEntriesLookup.Add(comInterfaceEntriesLookup);
+        }
+
+        internal static ComInterfaceEntry[] GetComInterfaceEntriesForTypeFromLookupTable(Type type)
+        {
+            // Using for loop to avoid exception from list changing when using for each.
+            // List is only added to and if any are added while looping, we can ignore those.
+            int count = ComInterfaceEntriesLookup.Count;
+            for (int i = 0; i < count; i++)
+            {
+                var comInterfaceEntries = ComInterfaceEntriesLookup[i](type);
+                if (comInterfaceEntries != null)
+                {
+                    return comInterfaceEntries;
+                }
+            }
+
+            return null;
+        }
+
+        private static readonly List<Func<Type, string>> RuntimeClassNameForNonWinRTTypeLookup = new();
+
+        public static void RegisterTypeRuntimeClassNameLookup(Func<Type, string> runtimeClassNameLookup)
+        {
+            RuntimeClassNameForNonWinRTTypeLookup.Add(runtimeClassNameLookup);
+        }
+
+        internal static string GetRuntimeClassNameForNonWinRTTypeFromLookupTable(Type type)
+        {
+            // Using for loop to avoid exception from list changing when using for each.
+            // List is only added to and if any are added while looping, we can ignore those.
+            int count = RuntimeClassNameForNonWinRTTypeLookup.Count;
+            for (int i = 0; i < count; i++)
+            {
+                var runtimeClasName = RuntimeClassNameForNonWinRTTypeLookup[i](type);
+                if (!string.IsNullOrEmpty(runtimeClasName))
+                {
+                    return runtimeClasName;
+                }
+            }
+
+            return null;
+        }
+
+        private static readonly ConcurrentDictionary<Type, ComInterfaceEntry[]> ComInterfaceEntriesForType = new();
+        public static void RegisterComInterfaceEntries(Type implementationType, ComInterfaceEntry[] comInterfaceEntries) => ComInterfaceEntriesForType.TryAdd(implementationType, comInterfaceEntries);
     }
 
 #if EMBED
@@ -287,7 +388,23 @@ namespace WinRT
             IntPtr inner,
             out IObjectReference objRef)
         {
-            objRef = ComWrappersSupport.GetObjectReferenceForInterface(isAggregation ? inner : newInstance);
+            // To keep pre-existing behavior when we don't know the IID, passing it as IUnknown
+            // as we would have done before.
+            Init(isAggregation, thisInstance, newInstance, inner, IID.IID_IUnknown, out objRef);
+        }
+
+        public unsafe static void Init(
+            bool isAggregation,
+            object thisInstance,
+            IntPtr newInstance,
+            IntPtr inner,
+            Guid iidForNewInstance,
+            out IObjectReference objRef)
+        {
+            objRef = ComWrappersSupport.GetObjectReferenceForInterface(
+                isAggregation ? inner : newInstance,
+                isAggregation ? IID.IID_IInspectable : iidForNewInstance,
+                requireQI: false);
 
             IntPtr referenceTracker;
             {
@@ -301,8 +418,7 @@ namespace WinRT
                 // otherwise the new instance will be used. Since the inner was composed
                 // it should answer immediately without going through the outer. Either way
                 // the reference count will go to the new instance.
-                Guid iid = IReferenceTrackerVftbl.IID;
-                int hr = Marshal.QueryInterface(objRef.ThisPtr, ref iid, out referenceTracker);
+                int hr = Marshal.QueryInterface(objRef.ThisPtr, ref Unsafe.AsRef(in IID.IID_IReferenceTracker), out referenceTracker);
                 if (hr != 0)
                 {
                     referenceTracker = default;
@@ -315,37 +431,9 @@ namespace WinRT
                 IntPtr instanceToWrap = newInstance;
 
                 // The instance supports IReferenceTracker.
-                if (referenceTracker != default(IntPtr))
+                if (referenceTracker != default)
                 {
                     createObjectFlags |= CreateObjectFlags.TrackerObject;
-                }
-
-                // Update flags if the native instance is being used in an aggregation scenario.
-                if (isAggregation)
-                {
-                    // Indicate the scenario is aggregation
-                    createObjectFlags |= (CreateObjectFlags)4;
-
-                    // The instance supports IReferenceTracker.
-                    if (referenceTracker != default(IntPtr))
-                    {
-                        // IReferenceTracker is not needed in aggregation scenarios.
-                        // It is not needed because all QueryInterface() calls on an
-                        // object are followed by an immediately release of the returned
-                        // pointer - see below for details.
-                        Marshal.Release(referenceTracker);
-
-                        // .NET 5 limitation
-                        //
-                        // For aggregated scenarios involving IReferenceTracker
-                        // the API handles object cleanup. In .NET 5 the API
-                        // didn't expose an option to handle this so we pass the inner
-                        // in order to handle its lifetime.
-                        //
-                        // The API doesn't handle inner lifetime in any other scenario
-                        // in the .NET 5 timeframe.
-                        instanceToWrap = inner;
-                    }
                 }
 
                 // Create a native object wrapper (i.e. RCW).
@@ -354,7 +442,31 @@ namespace WinRT
                 // therefore it is important that the enclosing CCW forwards to its inner
                 // if aggregation is involved. This is typically accomplished through an
                 // implementation of ICustomQueryInterface.
-                ComWrappersSupport.RegisterObjectForInterface(thisInstance, instanceToWrap, createObjectFlags);
+                if (isAggregation)
+                {
+                    // Indicate the scenario is aggregation
+                    createObjectFlags |= CreateObjectFlags.Aggregation;
+
+                    // The instance supports IReferenceTracker.
+                    if (referenceTracker != default)
+                    {
+                        // IReferenceTracker is not needed in aggregation scenarios.
+                        // It is not needed because all QueryInterface() calls on an
+                        // object are followed by an immediately release of the returned
+                        // pointer - see below for details.
+                        Marshal.Release(referenceTracker);
+
+                        ComWrappersSupport.RegisterObjectForInterface(thisInstance, instanceToWrap, inner, createObjectFlags);
+                    }
+                    else
+                    {
+                        ComWrappersSupport.RegisterObjectForInterface(thisInstance, instanceToWrap, createObjectFlags);
+                    }
+                }
+                else
+                {
+                    ComWrappersSupport.RegisterObjectForInterface(thisInstance, instanceToWrap, createObjectFlags);
+                }
             }
 
             // The following sets up the object reference to correctly handle AddRefs and releases
@@ -375,11 +487,11 @@ namespace WinRT
                 // IsAggregated and PreventReleaseOnDispose properties on IObjectReference.
                 objRef.IsAggregated = true;
                 // In WinUI scenario don't release inner
-                objRef.PreventReleaseOnDispose = referenceTracker != default(IntPtr);
+                objRef.PreventReleaseOnDispose = referenceTracker != default;
             }
             else
             {
-                if (referenceTracker != default(IntPtr))
+                if (referenceTracker != default)
                 {
                     // WinUI scenario
                     // This instance should be used to tell the
@@ -402,8 +514,7 @@ namespace WinRT
         {
             if (objRef.ReferenceTrackerPtr == IntPtr.Zero)
             {
-                Guid iid = IReferenceTrackerVftbl.IID;
-                int hr = Marshal.QueryInterface(objRef.ThisPtr, ref iid, out var referenceTracker);
+                int hr = Marshal.QueryInterface(objRef.ThisPtr, ref Unsafe.AsRef(in IID.IID_IReferenceTracker), out var referenceTracker);
                 if (hr == 0)
                 {
                     // WinUI scenario
@@ -434,7 +545,7 @@ namespace WinRT
 #endif     
     class DefaultComWrappers : ComWrappers
     {
-        private static readonly ConditionalWeakTable<Type, VtableEntries> TypeVtableEntryTable = new ConditionalWeakTable<Type, VtableEntries>();
+        private static readonly ConditionalWeakTable<Type, VtableEntries> TypeVtableEntryTable = new();
         public static unsafe IUnknownVftbl IUnknownVftbl => Unsafe.AsRef<IUnknownVftbl>(IUnknownVftblPtr.ToPointer());
 
         internal static IntPtr IUnknownVftblPtr { get; }
@@ -454,13 +565,7 @@ namespace WinRT
 
         protected override unsafe ComInterfaceEntry* ComputeVtables(object obj, CreateComInterfaceFlags flags, out int count)
         {
-            var vtableEntries = TypeVtableEntryTable.GetValue(obj.GetType(), (
-#if NET6_0_OR_GREATER
-                [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
-#elif NET
-                [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
-#endif
-                type) => 
+            var vtableEntries = TypeVtableEntryTable.GetValue(obj.GetType(), static (type) => 
             {
                 if (IsRuntimeImplementedRCW(type))
                 {
@@ -485,6 +590,13 @@ namespace WinRT
 
         private static unsafe bool IsRuntimeImplementedRCW(Type objType)
         {
+            // Built-in COM interop isn't supported in AOT environments,
+            // so this method can only ever return false. Just inline it.
+            if (!RuntimeFeature.IsDynamicCodeCompiled)
+            {
+                return false;
+            }
+
             bool isRcw = objType.IsCOMObject;
             if (objType.IsGenericType)
             {
@@ -502,22 +614,22 @@ namespace WinRT
 
         private static object CreateObject(IntPtr externalComObject)
         {
-            Guid inspectableIID = InterfaceIIDs.IInspectable_IID;
-            Guid weakReferenceIID = ABI.WinRT.Interop.IWeakReference.IID;
+            Guid inspectableIID = IID.IID_IInspectable;
+            Guid weakReferenceIID = IID.IID_IWeakReference;
             IntPtr ptr = IntPtr.Zero;
 
             try
             {
                 if (ComWrappersSupport.CreateRCWType != null && ComWrappersSupport.CreateRCWType.IsDelegate())
                 {
-                    return ComWrappersSupport.CreateDelegateFactory(ComWrappersSupport.CreateRCWType)(externalComObject);
+                    return ComWrappersSupport.GetOrCreateDelegateFactory(ComWrappersSupport.CreateRCWType)(externalComObject);
                 }
                 else if (Marshal.QueryInterface(externalComObject, ref inspectableIID, out ptr) == 0)
                 {
-                    var inspectableObjRef = ComWrappersSupport.GetObjectReferenceForInterface<IInspectable.Vftbl>(ptr);
+                    var inspectableObjRef = ComWrappersSupport.GetObjectReferenceForInterface<IUnknownVftbl>(ptr, IID.IID_IInspectable, false);
                     ComWrappersHelper.Init(inspectableObjRef);
 
-                    IInspectable inspectable = new IInspectable(inspectableObjRef);
+                    IInspectable inspectable = new(inspectableObjRef);
 
                     if (ComWrappersSupport.CreateRCWType != null
                         && ComWrappersSupport.CreateRCWType.IsSealed)
@@ -539,7 +651,7 @@ namespace WinRT
                 {
                     // IWeakReference is IUnknown-based, so implementations of it may not (and likely won't) implement
                     // IInspectable. As a result, we need to check for them explicitly.
-                    var iunknownObjRef = ComWrappersSupport.GetObjectReferenceForInterface<IUnknownVftbl>(ptr);
+                    var iunknownObjRef = ComWrappersSupport.GetObjectReferenceForInterface<IUnknownVftbl>(ptr, weakReferenceIID, false);
                     ComWrappersHelper.Init(iunknownObjRef);
 
                     return new SingleInterfaceOptimizedObject(typeof(IWeakReference), iunknownObjRef, false);
@@ -554,10 +666,7 @@ namespace WinRT
             }
             finally
             {
-                if (ptr != IntPtr.Zero)
-                {
-                    Marshal.Release(ptr);
-                }
+                MarshalExtensions.ReleaseIfNotNull(ptr);
             }
         }
 
@@ -605,10 +714,9 @@ namespace WinRT
             public VtableEntries(List<ComInterfaceEntry> entries, Type type)
             {
                 Data = (ComInterfaceEntry*)RuntimeHelpers.AllocateTypeAssociatedMemory(type, sizeof(ComInterfaceEntry) * entries.Count);
-                for (int i = 0; i < entries.Count; i++)
-                {
-                    Data[i] = entries[i];
-                }
+
+                CollectionsMarshal.AsSpan(entries).CopyTo(new Span<ComInterfaceEntry>(Data, entries.Count));
+
                 Count = entries.Count;
             }
         }

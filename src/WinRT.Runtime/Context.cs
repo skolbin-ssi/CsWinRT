@@ -3,47 +3,58 @@
 
 using System;
 using System.Runtime.InteropServices;
+using ABI.WinRT.Interop;
 using WinRT.Interop;
 
 namespace WinRT
 {
-    static class Context
+    internal static partial class Context
     {
-        [DllImport("api-ms-win-core-com-l1-1-0.dll")]
-        private static extern unsafe int CoGetContextToken(IntPtr* contextToken);
-
-        [DllImport("api-ms-win-core-com-l1-1-0.dll")]
-        private static extern int CoGetObjectContext(ref Guid riid, out IntPtr ppv);
-
-        private static readonly Guid IID_ICallbackWithNoReentrancyToApplicationSTA = new(0x0A299774, 0x3E4E, 0xFC42, 0x1D, 0x9D, 0x72, 0xCE, 0xE1, 0x05, 0xCA, 0x57);
-
-        public static IntPtr GetContextCallback()
-        {
-            Guid riid = ABI.WinRT.Interop.IContextCallback.IID;
-            Marshal.ThrowExceptionForHR(CoGetObjectContext(ref riid, out IntPtr contextCallbackPtr));
-            return contextCallbackPtr;
-        }
-
         public unsafe static IntPtr GetContextToken()
         {
             IntPtr contextToken;
-            Marshal.ThrowExceptionForHR(CoGetContextToken(&contextToken));
+            Marshal.ThrowExceptionForHR(Platform.CoGetContextToken(&contextToken));
             return contextToken;
+        }
+
+        public static unsafe IntPtr GetContextCallback()
+        {
+            Guid iid = IID.IID_IContextCallback;
+            IntPtr contextCallbackPtr;
+            Marshal.ThrowExceptionForHR(Platform.CoGetObjectContext(&iid, &contextCallbackPtr));
+            return contextCallbackPtr;
         }
 
         // Calls the given callback in the right context.
         // On any exception, calls onFail callback if any set.
         // If not set, exception is handled due to today we don't
         // have any scenario to propagate it from here.
-        public unsafe static void CallInContext(IntPtr contextCallbackPtr, IntPtr contextToken, Action callback, Action onFailCallback)
+        //
+        // On modern .NET, we can use function pointers to avoid the
+        // small binary size increase from all generated fields and
+        // logic to cache delegates, since we don't need any of that.
+        public unsafe static void CallInContext(
+            IntPtr contextCallbackPtr,
+            IntPtr contextToken,
+#if NET && CsWinRT_LANG_11_FEATURES
+            delegate*<object, void> callback,
+            delegate*<object, void> onFailCallback,
+#else
+            Action<object> callback,
+            Action<object> onFailCallback,
+#endif
+            object state)
         {
             // Check if we are already on the same context, if so we do not need to switch.
             if(contextCallbackPtr == IntPtr.Zero || GetContextToken() == contextToken)
             {
-                callback();
+                callback(state);
                 return;
             }
 
+#if NET && CsWinRT_LANG_11_FEATURES
+            IContextCallbackVftbl.ContextCallback(contextCallbackPtr, callback, onFailCallback, state);
+#else
             ComCallData data = default;
             var contextCallback = new ABI.WinRT.Interop.IContextCallback(ObjectReference<ABI.WinRT.Interop.IContextCallback.Vftbl>.FromAbi(contextCallbackPtr));
 
@@ -51,14 +62,15 @@ namespace WinRT
             {
                 contextCallback.ContextCallback(_ =>
                 {
-                    callback();
+                    callback(state);
                     return 0;
-                }, &data, IID_ICallbackWithNoReentrancyToApplicationSTA, 5);
+                }, &data, IID.IID_ICallbackWithNoReentrancyToApplicationSTA, 5);
             } 
-            catch(Exception)
+            catch (Exception)
             {
-                onFailCallback?.Invoke();
+                onFailCallback?.Invoke(state);
             }
+#endif
         }
 
         public static void DisposeContextCallback(IntPtr contextCallbackPtr)

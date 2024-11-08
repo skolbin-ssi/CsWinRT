@@ -475,18 +475,18 @@ namespace ABI.System.Collections.Generic
             public IList_Delegates.Clear_9 Clear_9;
             public IList_Delegates.GetMany_10 GetMany_10;
             public IList_Delegates.ReplaceAll_11 ReplaceAll_11;
-            public static Guid PIID = GuidGenerator.CreateIID(typeof(IList<T>));
-            private static readonly Type GetAt_0_Type = Expression.GetDelegateType(new Type[] { typeof(void*), typeof(uint), Marshaler<T>.AbiType.MakeByRefType(), typeof(int) });
-            private static readonly Type IndexOf_3_Type = Expression.GetDelegateType(new Type[] { typeof(void*), Marshaler<T>.AbiType, typeof(uint).MakeByRefType(), typeof(byte).MakeByRefType(), typeof(int) });
-            private static readonly Type SetAt_4_Type = Expression.GetDelegateType(new Type[] { typeof(void*), typeof(uint), Marshaler<T>.AbiType, typeof(int) });
-            private static readonly Type InsertAt_5_Type = Expression.GetDelegateType(new Type[] { typeof(void*), typeof(uint), Marshaler<T>.AbiType, typeof(int) });
-            private static readonly Type Append_7_Type = Expression.GetDelegateType(new Type[] { typeof(void*), Marshaler<T>.AbiType, typeof(int) });
+            public static readonly Guid PIID = GuidGenerator.CreateIIDUnsafe(typeof(IList<T>));
+            private static readonly Type GetAt_0_Type = Projections.GetAbiDelegateType(new Type[] { typeof(void*), typeof(uint), Marshaler<T>.AbiType.MakeByRefType(), typeof(int) });
+            private static readonly Type IndexOf_3_Type = Projections.GetAbiDelegateType(new Type[] { typeof(void*), Marshaler<T>.AbiType, typeof(uint).MakeByRefType(), typeof(byte).MakeByRefType(), typeof(int) });
+            private static readonly Type SetAt_4_Type = Projections.GetAbiDelegateType(new Type[] { typeof(void*), typeof(uint), Marshaler<T>.AbiType, typeof(int) });
+            private static readonly Type InsertAt_5_Type = Projections.GetAbiDelegateType(new Type[] { typeof(void*), typeof(uint), Marshaler<T>.AbiType, typeof(int) });
+            private static readonly Type Append_7_Type = Projections.GetAbiDelegateType(new Type[] { typeof(void*), Marshaler<T>.AbiType, typeof(int) });
 
             internal unsafe Vftbl(IntPtr thisPtr)
             {
-                var vftblPtr = Marshal.PtrToStructure<VftblPtr>(thisPtr);
-                var vftbl = (IntPtr*)vftblPtr.Vftbl;
-                IInspectableVftbl = Marshal.PtrToStructure<IInspectable.Vftbl>(vftblPtr.Vftbl);
+                var vftblPtr = *(void***)thisPtr;
+                var vftbl = (IntPtr*)vftblPtr;
+                IInspectableVftbl = *(IInspectable.Vftbl*)vftblPtr;
                 GetAt_0 = Marshal.GetDelegateForFunctionPointer(vftbl[6], GetAt_0_Type);
                 get_Size_1 = Marshal.GetDelegateForFunctionPointer<_get_PropertyAsUInt32>(vftbl[7]);
                 GetView_2 = Marshal.GetDelegateForFunctionPointer<IList_Delegates.GetView_2>(vftbl[8]);
@@ -745,7 +745,7 @@ namespace ABI.System.Collections.Generic
             var vftblT = new Vftbl(thisPtr);
             return ObjectReference<Vftbl>.FromAbi(thisPtr, vftblT);
         }
-        public static Guid PIID = Vftbl.PIID;
+        public static readonly Guid PIID = Vftbl.PIID;
 
         public static implicit operator IList<T>(IObjectReference obj) => (obj != null) ? new IList<T>(obj) : null;
         public static implicit operator IList<T>(ObjectReference<Vftbl> obj) => (obj != null) ? new IList<T>(obj) : null;
@@ -770,6 +770,7 @@ namespace ABI.System.Collections.Generic
             try
             {
                 _obj.Vftbl.GetAt_0.DynamicInvokeAbi(__params);
+                GC.KeepAlive(_obj);
                 return Marshaler<T>.FromAbi(__params[2]);
             }
             finally
@@ -784,6 +785,7 @@ namespace ABI.System.Collections.Generic
             try
             {
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.GetView_2(ThisPtr, out __retval));
+                GC.KeepAlive(_obj);
                 return MarshalInterface<global::Windows.Foundation.Collections.IVectorView<T>>.FromAbi(__retval);
             }
             finally
@@ -801,6 +803,7 @@ namespace ABI.System.Collections.Generic
                 __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[1] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.IndexOf_3.DynamicInvokeAbi(__params);
+                GC.KeepAlive(_obj);
                 index = (uint)__params[2];
                 return (byte)__params[3] != 0;
             }
@@ -819,6 +822,8 @@ namespace ABI.System.Collections.Generic
                 __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[2] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.SetAt_4.DynamicInvokeAbi(__params);
+                GC.KeepAlive(_obj);
+                GC.KeepAlive(__params);
             }
             finally
             {
@@ -835,6 +840,8 @@ namespace ABI.System.Collections.Generic
                 __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[2] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.InsertAt_5.DynamicInvokeAbi(__params);
+                GC.KeepAlive(_obj);
+                GC.KeepAlive(__params);
             }
             finally
             {
@@ -845,6 +852,7 @@ namespace ABI.System.Collections.Generic
         public unsafe void RemoveAt(uint index)
         {
             global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.RemoveAt_6(ThisPtr, index));
+            GC.KeepAlive(_obj);
         }
 
         public unsafe void Append(T value)
@@ -856,6 +864,8 @@ namespace ABI.System.Collections.Generic
                 __value = Marshaler<T>.CreateMarshaler2(value);
                 __params[1] = Marshaler<T>.GetAbi(__value);
                 _obj.Vftbl.Append_7.DynamicInvokeAbi(__params);
+                GC.KeepAlive(_obj);
+                GC.KeepAlive(__params);
             }
             finally
             {
@@ -866,11 +876,13 @@ namespace ABI.System.Collections.Generic
         public unsafe void RemoveAtEnd()
         {
             global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.RemoveAtEnd_8(ThisPtr));
+            GC.KeepAlive(_obj);
         }
 
         public unsafe void _Clear()
         {
             global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.Clear_9(ThisPtr));
+            GC.KeepAlive(_obj);
         }
 
         public unsafe uint GetMany(uint startIndex, ref T[] items)
@@ -884,6 +896,7 @@ namespace ABI.System.Collections.Generic
                 __items = Marshaler<T>.CreateMarshalerArray(items);
                 (__items_length, __items_data) = Marshaler<T>.GetAbiArray(__items);
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.GetMany_10(ThisPtr, startIndex, __items_length, __items_data, out __retval));
+                GC.KeepAlive(_obj);
                 items = Marshaler<T>.FromAbiArray((__items_length, __items_data));
                 return __retval;
             }
@@ -903,6 +916,7 @@ namespace ABI.System.Collections.Generic
                 __items = Marshaler<T>.CreateMarshalerArray(items);
                 (__items_length, __items_data) = Marshaler<T>.GetAbiArray(__items);
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.ReplaceAll_11(ThisPtr, __items_length, __items_data));
+                GC.KeepAlive(_obj);
             }
             finally
             {
@@ -916,6 +930,7 @@ namespace ABI.System.Collections.Generic
             {
                 uint __retval = default;
                 global::WinRT.ExceptionHelpers.ThrowExceptionForHR(_obj.Vftbl.get_Size_1(ThisPtr, out __retval));
+                GC.KeepAlive(_obj);
                 return __retval;
             }
         }

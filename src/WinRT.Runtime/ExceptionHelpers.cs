@@ -3,8 +3,11 @@
 
 using System;
 using System.Collections;
+using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using WinRT.Interop;
 
 namespace WinRT
@@ -18,6 +21,10 @@ namespace WinRT
     static unsafe class ExceptionHelpers
     {
         private const int COR_E_OBJECTDISPOSED = unchecked((int)0x80131622);
+        private const int COR_E_OPERATIONCANCELED = unchecked((int)0x8013153b);
+        private const int COR_E_ARGUMENTOUTOFRANGE = unchecked((int)0x80131502);
+        private const int COR_E_INDEXOUTOFRANGE = unchecked((int)0x80131508);
+        private const int COR_E_TIMEOUT = unchecked((int)0x80131505);
         private const int RO_E_CLOSED = unchecked((int)0x80000013);
         internal const int E_BOUNDS = unchecked((int)0x8000000b);
         internal const int E_CHANGED_STATE = unchecked((int)0x8000000c);
@@ -30,24 +37,44 @@ namespace WinRT
         internal const int E_ELEMENTNOTENABLED = unchecked((int)0x802B001E);
         internal const int E_ELEMENTNOTAVAILABLE = unchecked((int)0x802B001F);
         internal const int ERROR_INVALID_WINDOW_HANDLE = unchecked((int)0x80070578);
+        private const int E_POINTER = unchecked((int)0x80004003);
+        private const int E_NOTIMPL = unchecked((int)0x80004001);
+        private const int E_ACCESSDENIED = unchecked((int)0x80070005);
+        internal const int E_INVALIDARG = unchecked((int)0x80070057);
+        internal const int E_NOINTERFACE = unchecked((int)0x80004002);
+        private const int E_OUTOFMEMORY = unchecked((int)0x8007000e);
+        private const int ERROR_ARITHMETIC_OVERFLOW = unchecked((int)0x80070216);
+        private const int ERROR_FILENAME_EXCED_RANGE = unchecked((int)0x800700ce);
+        private const int ERROR_FILE_NOT_FOUND = unchecked((int)0x80070002);
+        private const int ERROR_HANDLE_EOF = unchecked((int)0x80070026);
+        private const int ERROR_PATH_NOT_FOUND = unchecked((int)0x80070003);
+        private const int ERROR_STACK_OVERFLOW = unchecked((int)0x800703e9);
+        private const int ERROR_BAD_FORMAT = unchecked((int)0x8007000b);
+        private const int ERROR_CANCELLED = unchecked((int)0x800704c7);
+        private const int ERROR_TIMEOUT = unchecked((int)0x800705b4);
 
-        [DllImport("oleaut32.dll")]
-        private static extern int SetErrorInfo(uint dwReserved, IntPtr perrinfo);
-
-        private static delegate* unmanaged[Stdcall]<out IntPtr, int> getRestrictedErrorInfo;
+        private static delegate* unmanaged[Stdcall]<IntPtr*, int> getRestrictedErrorInfo;
         private static delegate* unmanaged[Stdcall]<IntPtr, int> setRestrictedErrorInfo;
         private static delegate* unmanaged[Stdcall]<int, IntPtr, IntPtr, int> roOriginateLanguageException;
         private static delegate* unmanaged[Stdcall]<IntPtr, int> roReportUnhandledError;
 
-        private static readonly bool initialized =  Initialize();
+        private static readonly bool initialized = Initialize();
 
         private static bool Initialize()
         {
             IntPtr winRTErrorModule = Platform.LoadLibraryExW("api-ms-win-core-winrt-error-l1-1-1.dll", IntPtr.Zero, (uint)DllImportSearchPath.System32);
             if (winRTErrorModule != IntPtr.Zero)
             {
-                roOriginateLanguageException = (delegate* unmanaged[Stdcall]<int, IntPtr, IntPtr, int>)Platform.GetProcAddress(winRTErrorModule, "RoOriginateLanguageException");
-                roReportUnhandledError = (delegate* unmanaged[Stdcall]<IntPtr, int>)Platform.GetProcAddress(winRTErrorModule, "RoReportUnhandledError");
+#if NET7_0_OR_GREATER || CsWinRT_LANG_11_FEATURES
+                ReadOnlySpan<byte> langExceptionString = "RoOriginateLanguageException"u8;
+                ReadOnlySpan<byte> reportUnhandledErrorString = "RoReportUnhandledError"u8;
+#else
+                ReadOnlySpan<byte> langExceptionString = Encoding.ASCII.GetBytes("RoOriginateLanguageException");
+                ReadOnlySpan<byte> reportUnhandledErrorString = Encoding.ASCII.GetBytes("RoReportUnhandledError");
+#endif
+
+                roOriginateLanguageException = (delegate* unmanaged[Stdcall]<int, IntPtr, IntPtr, int>)Platform.GetProcAddress(winRTErrorModule, langExceptionString);
+                roReportUnhandledError = (delegate* unmanaged[Stdcall]<IntPtr, int>)Platform.GetProcAddress(winRTErrorModule, reportUnhandledErrorString);
             }
             else
             {
@@ -56,8 +83,15 @@ namespace WinRT
 
             if (winRTErrorModule != IntPtr.Zero)
             {
-                getRestrictedErrorInfo = (delegate* unmanaged[Stdcall]<out IntPtr, int>)Platform.GetProcAddress(winRTErrorModule, "GetRestrictedErrorInfo");
-                setRestrictedErrorInfo = (delegate* unmanaged[Stdcall]<IntPtr, int>)Platform.GetProcAddress(winRTErrorModule, "SetRestrictedErrorInfo");
+#if NET7_0_OR_GREATER || CsWinRT_LANG_11_FEATURES
+                ReadOnlySpan<byte> getRestrictedErrorInfoFuncName = "GetRestrictedErrorInfo"u8;
+                ReadOnlySpan<byte> setRestrictedErrorInfoFuncName = "SetRestrictedErrorInfo"u8;
+#else
+                ReadOnlySpan<byte> getRestrictedErrorInfoFuncName = Encoding.ASCII.GetBytes("GetRestrictedErrorInfo");
+                ReadOnlySpan<byte> setRestrictedErrorInfoFuncName = Encoding.ASCII.GetBytes("SetRestrictedErrorInfo");
+#endif
+                getRestrictedErrorInfo = (delegate* unmanaged[Stdcall]<IntPtr*, int>)Platform.GetProcAddress(winRTErrorModule, getRestrictedErrorInfoFuncName);
+                setRestrictedErrorInfo = (delegate* unmanaged[Stdcall]<IntPtr, int>)Platform.GetProcAddress(winRTErrorModule, setRestrictedErrorInfoFuncName);
             }
 
             return true;
@@ -70,6 +104,7 @@ namespace WinRT
                 Throw(hr);
             }
 
+            [MethodImpl(MethodImplOptions.NoInlining)]
             static void Throw(int hr)
             {
                 Exception ex = GetExceptionForHR(hr, useGlobalErrorState: true, out bool restoredExceptionFromGlobalState);
@@ -85,22 +120,23 @@ namespace WinRT
         }
 
         // Retrieve restricted error info from thread without removing it, for propagation and debugging (watch, locals, etc)
-        private static IObjectReference BorrowRestrictedErrorInfo()
+        private static ObjectReference<IUnknownVftbl> BorrowRestrictedErrorInfo()
         {
             if (getRestrictedErrorInfo == null)
                 return null;
 
-            Marshal.ThrowExceptionForHR(getRestrictedErrorInfo(out IntPtr restrictedErrorInfoPtr));
+            IntPtr restrictedErrorInfoPtr = IntPtr.Zero;
+            Marshal.ThrowExceptionForHR(getRestrictedErrorInfo(&restrictedErrorInfoPtr));
             if (restrictedErrorInfoPtr == IntPtr.Zero)
                 return null;
 
             if (setRestrictedErrorInfo != null)
             {
                 setRestrictedErrorInfo(restrictedErrorInfoPtr);
-                return ObjectReference<ABI.WinRT.Interop.IRestrictedErrorInfo.Vftbl>.FromAbi(restrictedErrorInfoPtr);
+                return ObjectReference<IUnknownVftbl>.FromAbi(restrictedErrorInfoPtr, IID.IID_IRestrictedErrorInfo);
             }
 
-            return ObjectReference<ABI.WinRT.Interop.IRestrictedErrorInfo.Vftbl>.Attach(ref restrictedErrorInfoPtr);
+            return ObjectReference<IUnknownVftbl>.Attach(ref restrictedErrorInfoPtr, IID.IID_IRestrictedErrorInfo);
         }
 
         public static Exception GetExceptionForHR(int hr) => hr >= 0 ? null : GetExceptionForHR(hr, true, out _);
@@ -109,28 +145,32 @@ namespace WinRT
         {
             restoredExceptionFromGlobalState = false;
 
-            ObjectReference<ABI.WinRT.Interop.IErrorInfo.Vftbl> iErrorInfo = null;
-            IObjectReference restrictedErrorInfoToSave = null;
+            ObjectReference<IUnknownVftbl> restrictedErrorInfoToSave = null;
             Exception ex;
             string description = null;
             string restrictedError = null;
             string restrictedErrorReference = null;
             string restrictedCapabilitySid = null;
             bool hasOtherLanguageException = false;
+            string errorMessage = string.Empty;
 
             if (useGlobalErrorState)
             {
                 using var restrictedErrorInfoRef = BorrowRestrictedErrorInfo();
                 if (restrictedErrorInfoRef != null)
                 {
-                    restrictedErrorInfoToSave = restrictedErrorInfoRef.As<ABI.WinRT.Interop.IRestrictedErrorInfo.Vftbl>();
-                    ABI.WinRT.Interop.IRestrictedErrorInfo restrictedErrorInfo = new ABI.WinRT.Interop.IRestrictedErrorInfo(restrictedErrorInfoRef);
+                    restrictedErrorInfoToSave = restrictedErrorInfoRef.As<IUnknownVftbl>(IID.IID_IRestrictedErrorInfo);
+                    ABI.WinRT.Interop.IRestrictedErrorInfo restrictedErrorInfo = new(restrictedErrorInfoRef);
                     restrictedErrorInfo.GetErrorDetails(out description, out int hrLocal, out restrictedError, out restrictedCapabilitySid);
                     restrictedErrorReference = restrictedErrorInfo.GetReference();
-                    if (restrictedErrorInfoRef.TryAs<ABI.WinRT.Interop.ILanguageExceptionErrorInfo.Vftbl>(out var languageErrorInfoRef) >= 0)
+                    if (restrictedErrorInfoRef.TryAs<IUnknownVftbl>(IID.IID_ILanguageExceptionErrorInfo, out var languageErrorInfoRef) >= 0)
                     {
-                        ILanguageExceptionErrorInfo languageErrorInfo = new ABI.WinRT.Interop.ILanguageExceptionErrorInfo(languageErrorInfoRef);
+#if NET
+                        using IObjectReference languageException = ABI.WinRT.Interop.ILanguageExceptionErrorInfo.GetLanguageException(languageErrorInfoRef);
+#else
+                        ABI.WinRT.Interop.ILanguageExceptionErrorInfo languageErrorInfo = new(languageErrorInfoRef);
                         using IObjectReference languageException = languageErrorInfo.GetLanguageException();
+#endif
                         if (languageException is object)
                         {
                             if (languageException.IsReferenceToManagedObject)
@@ -144,62 +184,171 @@ namespace WinRT
                             }
                             else
                             {
+                                // This could also be a proxy to a managed exception.
                                 hasOtherLanguageException = true;
                             }
                         }
                     }
-                    else
+
+                    if (hr == hrLocal)
                     {
-                        if (hr == hrLocal)
+                        // For cross language WinRT exceptions, general information will be available in the description,
+                        // which is populated from IRestrictedErrorInfo::GetErrorDetails and more specific information will be available
+                        // in the restrictedError which also comes from IRestrictedErrorInfo::GetErrorDetails. If both are available, we
+
+                        // need to concatinate them to produce the final exception message.
+                        if (!string.IsNullOrEmpty(description))
                         {
-                            restrictedErrorInfoRef.TryAs<ABI.WinRT.Interop.IErrorInfo.Vftbl>(out iErrorInfo);
+                            errorMessage += description;
+
+                            if (!string.IsNullOrEmpty(restrictedError))
+                            {
+                                errorMessage += Environment.NewLine;
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(restrictedError))
+                        {
+                            errorMessage += restrictedError;
                         }
                     }
                 }
             }
 
-            using (iErrorInfo)
+            switch (hr)
             {
-                switch (hr)
-                {
-                    case E_ILLEGAL_STATE_CHANGE:
-                    case E_ILLEGAL_METHOD_CALL:
-                    case E_ILLEGAL_DELEGATE_ASSIGNMENT:
-                    case APPMODEL_ERROR_NO_PACKAGE:
-                        ex = new InvalidOperationException(description);
-                        break;
-                    case E_XAMLPARSEFAILED:
-                        ex = new Microsoft.UI.Xaml.Markup.XamlParseException();
-                        break;
-                    case E_LAYOUTCYCLE:
-                        ex = new Microsoft.UI.Xaml.LayoutCycleException();
-                        break;
-                    case E_ELEMENTNOTAVAILABLE:
-                        ex = new Microsoft.UI.Xaml.Automation.ElementNotAvailableException();
-                        break;
-                    case E_ELEMENTNOTENABLED:
-                        ex = new Microsoft.UI.Xaml.Automation.ElementNotEnabledException();
-                        break;
-                    case ERROR_INVALID_WINDOW_HANDLE:
-                        ex = new System.Runtime.InteropServices.COMException(
+                case E_CHANGED_STATE:
+                case E_ILLEGAL_STATE_CHANGE:
+                case E_ILLEGAL_METHOD_CALL:
+                case E_ILLEGAL_DELEGATE_ASSIGNMENT:
+                case APPMODEL_ERROR_NO_PACKAGE:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new InvalidOperationException(errorMessage) : new InvalidOperationException();
+                    break;
+                case E_XAMLPARSEFAILED:
+#if NET
+                    if (FeatureSwitches.UseWindowsUIXamlProjections)
+                    {
+                        ex = !string.IsNullOrEmpty(errorMessage) ? new Windows.UI.Xaml.Markup.XamlParseException(errorMessage) : new Windows.UI.Xaml.Markup.XamlParseException();
+                    }
+                    else
+#endif
+                    {
+                        ex = !string.IsNullOrEmpty(errorMessage) ? new Microsoft.UI.Xaml.Markup.XamlParseException(errorMessage) : new Microsoft.UI.Xaml.Markup.XamlParseException();
+                    }
+                    break;
+                case E_LAYOUTCYCLE:
+#if NET
+                    if (FeatureSwitches.UseWindowsUIXamlProjections)
+                    {
+                        ex = !string.IsNullOrEmpty(errorMessage) ? new Windows.UI.Xaml.LayoutCycleException(errorMessage) : new Windows.UI.Xaml.LayoutCycleException();
+                    }
+                    else
+#endif
+                    {
+                        ex = !string.IsNullOrEmpty(errorMessage) ? new Microsoft.UI.Xaml.LayoutCycleException(errorMessage) : new Microsoft.UI.Xaml.LayoutCycleException();
+                    }
+                    break;
+                case E_ELEMENTNOTAVAILABLE:
+#if NET
+                    if (FeatureSwitches.UseWindowsUIXamlProjections)
+                    {
+                        ex = !string.IsNullOrEmpty(errorMessage) ? new Windows.UI.Xaml.Automation.ElementNotAvailableException(errorMessage) : new Windows.UI.Xaml.Automation.ElementNotAvailableException();
+                    }
+                    else
+#endif
+                    {
+                        ex = !string.IsNullOrEmpty(errorMessage) ? new Microsoft.UI.Xaml.Automation.ElementNotAvailableException(errorMessage) : new Microsoft.UI.Xaml.Automation.ElementNotAvailableException();
+                    }
+                    break;
+                case E_ELEMENTNOTENABLED:
+#if NET
+                    if (FeatureSwitches.UseWindowsUIXamlProjections)
+                    {
+                        ex = !string.IsNullOrEmpty(errorMessage) ? new Windows.UI.Xaml.Automation.ElementNotEnabledException(errorMessage) : new Windows.UI.Xaml.Automation.ElementNotEnabledException();
+                    }
+                    else
+#endif
+                    {
+                        ex = !string.IsNullOrEmpty(errorMessage) ? new Microsoft.UI.Xaml.Automation.ElementNotEnabledException(errorMessage) : new Microsoft.UI.Xaml.Automation.ElementNotEnabledException();
+                    }
+                    break;
+                case ERROR_INVALID_WINDOW_HANDLE:
+                    ex = new COMException(
 @"Invalid window handle. (0x80070578)
 Consider WindowNative, InitializeWithWindow
-See https://aka.ms/cswinrt/interop#windows-sdk", 
-                            ERROR_INVALID_WINDOW_HANDLE);
-                        break;
-                    default:
-                        ex = Marshal.GetExceptionForHR(hr, iErrorInfo?.ThisPtr ?? (IntPtr)(-1));
-                        break;
-                }
+See https://aka.ms/cswinrt/interop#windows-sdk",
+                        ERROR_INVALID_WINDOW_HANDLE);
+                    break;
+                case RO_E_CLOSED:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new ObjectDisposedException(string.Empty, errorMessage) : new ObjectDisposedException(string.Empty);
+                    break;
+                case E_POINTER:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new NullReferenceException(errorMessage) : new NullReferenceException();
+                    break;
+                case E_NOTIMPL:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new NotImplementedException(errorMessage) : new NotImplementedException();
+                    break;
+                case E_ACCESSDENIED:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new UnauthorizedAccessException(errorMessage) : new UnauthorizedAccessException();
+                    break;
+                case E_INVALIDARG:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new ArgumentException(errorMessage) : new ArgumentException();
+                    break;
+                case E_NOINTERFACE:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new InvalidCastException(errorMessage) : new InvalidCastException();
+                    break;
+                case E_OUTOFMEMORY:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new OutOfMemoryException(errorMessage) : new OutOfMemoryException();
+                    break;
+                case E_BOUNDS:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new ArgumentOutOfRangeException(errorMessage) : new ArgumentOutOfRangeException();
+                    break;
+                case ERROR_ARITHMETIC_OVERFLOW:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new ArithmeticException(errorMessage) : new ArithmeticException();
+                    break;
+                case ERROR_FILENAME_EXCED_RANGE:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new PathTooLongException(errorMessage) : new PathTooLongException();
+                    break;
+                case ERROR_FILE_NOT_FOUND:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new FileNotFoundException(errorMessage) : new FileNotFoundException();
+                    break;
+                case ERROR_HANDLE_EOF:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new EndOfStreamException(errorMessage) : new EndOfStreamException();
+                    break;
+                case ERROR_PATH_NOT_FOUND:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new DirectoryNotFoundException(errorMessage) : new DirectoryNotFoundException();
+                    break;
+                case ERROR_STACK_OVERFLOW:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new StackOverflowException(errorMessage) : new StackOverflowException();
+                    break;
+                case ERROR_BAD_FORMAT:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new BadImageFormatException(errorMessage) : new BadImageFormatException();
+                    break;
+                case ERROR_CANCELLED:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new OperationCanceledException(errorMessage) : new OperationCanceledException();
+                    break;
+                case ERROR_TIMEOUT:
+                    ex = !string.IsNullOrEmpty(errorMessage) ? new TimeoutException(errorMessage) : new TimeoutException();
+                    break;
+
+                default:
+                    ex = new COMException(errorMessage, hr);
+                    break;
             }
 
-            ex.AddExceptionDataForRestrictedErrorInfo(
-                description,
-                restrictedError,
-                restrictedErrorReference,
-                restrictedCapabilitySid,
-                restrictedErrorInfoToSave,
-                hasOtherLanguageException);
+            // Ensure HResult matches.
+            ex.SetHResult(hr);
+
+            if (useGlobalErrorState)
+            {
+                ex.AddExceptionDataForRestrictedErrorInfo(
+                    description,
+                    restrictedError,
+                    restrictedErrorReference,
+                    restrictedCapabilitySid,
+                    restrictedErrorInfoToSave,
+                    hasOtherLanguageException);
+            }
 
             return ex;
         }
@@ -225,21 +374,42 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
                         message = ex.GetType().FullName;
                     }
 
-                    IntPtr hstring;
+                    MarshalString.HSTRING_HEADER header = default;
+                    IntPtr hstring = default;
 
-                    if (Platform.WindowsCreateString(message, message.Length, &hstring) != 0)
+                    fixed (char* lpMessage = message)
                     {
-                        hstring = IntPtr.Zero;
-                    }
+                        if (Platform.WindowsCreateStringReference(
+                            sourceString: (ushort*)lpMessage,
+                            length: message.Length,
+                            hstring_header: (IntPtr*)&header,
+                            hstring: &hstring) != 0)
+                        {
+                            hstring = IntPtr.Zero;
+                        }
 
-                    using var managedExceptionWrapper = ComWrappersSupport.CreateCCWForObject(ex);
-                    roOriginateLanguageException(GetHRForException(ex), hstring, managedExceptionWrapper.ThisPtr);
+#if NET
+                        IntPtr managedExceptionWrapper = ComWrappersSupport.CreateCCWForObjectUnsafe(ex);
+
+                        try
+                        {
+                            roOriginateLanguageException(GetHRForException(ex), hstring, managedExceptionWrapper);
+                        }
+                        finally
+                        {
+                            Marshal.Release(managedExceptionWrapper);
+                        }
+#else
+                        using var managedExceptionWrapper = ComWrappersSupport.CreateCCWForObject(ex);
+                        roOriginateLanguageException(GetHRForException(ex), hstring, managedExceptionWrapper.ThisPtr);
+#endif
+                    }
                 }
             }
             else
             {
                 using var iErrorInfo = ComWrappersSupport.CreateCCWForObject(new ManagedExceptionErrorInfo(ex));
-                SetErrorInfo(0, iErrorInfo.ThisPtr);
+                Platform.SetErrorInfo(0, iErrorInfo.ThisPtr);
             }
         }
 
@@ -252,6 +422,7 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
                 if (restrictedErrorInfoRef != null)
                 {
                     roReportUnhandledError(restrictedErrorInfoRef.ThisPtr);
+                    GC.KeepAlive(restrictedErrorInfoRef);
                 }
             }
         }
@@ -261,39 +432,23 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
             int hr = ex.HResult;
             if (ex.TryGetRestrictedLanguageErrorObject(out var restrictedErrorObject))
             {
-                restrictedErrorObject.AsType<ABI.WinRT.Interop.IRestrictedErrorInfo>().GetErrorDetails(out _, out hr, out _, out _);
-            }
-            if (hr == COR_E_OBJECTDISPOSED)
-            {
-                return RO_E_CLOSED;
-            }
-            return hr;
-        }
-
-        //
-        // Exception requires anything to be added into Data dictionary is serializable
-        // This wrapper is made serializable to satisfy this requirement but does NOT serialize
-        // the object and simply ignores it during serialization, because we only need
-        // the exception instance in the app to hold the error object alive.
-        //
-        [Serializable]
-        internal sealed class __RestrictedErrorObject
-        {
-            // Hold the error object instance but don't serialize/deserialize it
-            [NonSerialized]
-            private readonly IObjectReference _realErrorObject;
-
-            internal __RestrictedErrorObject(IObjectReference errorObject)
-            {
-                _realErrorObject = errorObject;
+                new ABI.WinRT.Interop.IRestrictedErrorInfo(restrictedErrorObject).GetErrorDetails(out _, out hr, out _, out _);
             }
 
-            public IObjectReference RealErrorObject
+            switch (hr)
             {
-                get
-                {
-                    return _realErrorObject;
-                }
+                case COR_E_OBJECTDISPOSED:
+                    return RO_E_CLOSED;
+                case COR_E_OPERATIONCANCELED:
+                    return ERROR_CANCELLED;
+                case COR_E_ARGUMENTOUTOFRANGE:
+                case COR_E_INDEXOUTOFRANGE:
+                    return E_BOUNDS;
+                case COR_E_TIMEOUT:
+                    return ERROR_TIMEOUT;
+
+                default:
+                    return hr;
             }
         }
 
@@ -303,27 +458,27 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
             string restrictedError,
             string restrictedErrorReference,
             string restrictedCapabilitySid,
-            IObjectReference restrictedErrorObject,
+            ObjectReference<IUnknownVftbl> restrictedErrorObject,
             bool hasRestrictedLanguageErrorObject = false)
         {
             IDictionary dict = ex.Data;
             if (dict != null)
             {
-                dict.Add("Description", description);
-                dict.Add("RestrictedDescription", restrictedError);
-                dict.Add("RestrictedErrorReference", restrictedErrorReference);
-                dict.Add("RestrictedCapabilitySid", restrictedCapabilitySid);
+                dict["Description"] = description;
+                dict["RestrictedDescription"] = restrictedError;
+                dict["RestrictedErrorReference"] = restrictedErrorReference;
+                dict["RestrictedCapabilitySid"] = restrictedCapabilitySid;
 
                 // Keep the error object alive so that user could retrieve error information
                 // using Data["RestrictedErrorReference"]
-                dict.Add("__RestrictedErrorObjectReference", restrictedErrorObject == null ? null : new __RestrictedErrorObject(restrictedErrorObject));
-                dict.Add("__HasRestrictedLanguageErrorObject", hasRestrictedLanguageErrorObject);
+                dict["__RestrictedErrorObjectReference"] = restrictedErrorObject;
+                dict["__HasRestrictedLanguageErrorObject"] = hasRestrictedLanguageErrorObject;
             }
         }
 
         internal static bool TryGetRestrictedLanguageErrorObject(
             this Exception ex,
-            out IObjectReference restrictedErrorObject)
+            out ObjectReference<IUnknownVftbl> restrictedErrorObject)
         {
             restrictedErrorObject = null;
             IDictionary dict = ex.Data;
@@ -331,8 +486,7 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
             {
                 if (dict.Contains("__RestrictedErrorObjectReference"))
                 {
-                    if (dict["__RestrictedErrorObjectReference"] is __RestrictedErrorObject restrictedObject)
-                        restrictedErrorObject = restrictedObject.RealErrorObject;
+                    restrictedErrorObject = (ObjectReference<IUnknownVftbl>)dict["__RestrictedErrorObjectReference"];
                 }
                 return (bool)dict["__HasRestrictedLanguageErrorObject"]!;
             }
@@ -353,11 +507,12 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
                     // HRESULT ABI return values.   However, in many cases async APIs will set the thread's restricted
                     // error info as a convention in order to provide extended debugging information for the ErrorCode
                     // property.
-                    Marshal.ThrowExceptionForHR(getRestrictedErrorInfo(out IntPtr restrictedErrorInfoPtr));
+                    IntPtr restrictedErrorInfoPtr = IntPtr.Zero;
+                    Marshal.ThrowExceptionForHR(getRestrictedErrorInfo(&restrictedErrorInfoPtr));
 
                     if (restrictedErrorInfoPtr != IntPtr.Zero)
                     {
-                        IObjectReference restrictedErrorInfoRef = ObjectReference<ABI.WinRT.Interop.IRestrictedErrorInfo.Vftbl>.Attach(ref restrictedErrorInfoPtr);
+                        ObjectReference<IUnknownVftbl> restrictedErrorInfoRef = ObjectReference<IUnknownVftbl>.Attach(ref restrictedErrorInfoPtr, IID.IID_IRestrictedErrorInfo);
 
                         ABI.WinRT.Interop.IRestrictedErrorInfo restrictedErrorInfo = new ABI.WinRT.Interop.IRestrictedErrorInfo(restrictedErrorInfoRef);
 
@@ -378,7 +533,7 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
                                                                     restrictedDescription,
                                                                      restrictedErrorInfo.GetReference(),
                                                                      capabilitySid,
-                                                                     restrictedErrorInfoRef.As<ABI.WinRT.Interop.IRestrictedErrorInfo.Vftbl>());
+                                                                     restrictedErrorInfoRef.As<IUnknownVftbl>(IID.IID_IRestrictedErrorInfo));
                         }
                     }
                 }
@@ -402,7 +557,11 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
     {
         public static void SetHResult(this Exception ex, int value)
         {
+#if !NET
             ex.GetType().GetProperty("HResult").SetValue(ex, value);
+#else
+            ex.HResult = value;
+#endif
         }
 
         internal static Exception GetExceptionForHR(this Exception innerException, int hresult, string messageResource)
@@ -419,131 +578,6 @@ See https://aka.ms/cswinrt/interop#windows-sdk",
             }
             e.SetHResult(hresult);
             return e;
-        }
-    }
-}
-
-namespace Microsoft.UI.Xaml
-{
-    using System.Runtime.Serialization;
-    namespace Automation
-    {
-        [Serializable]
-#if EMBED
-        internal
-#else
-        public
-#endif
-        class ElementNotAvailableException : Exception
-        {
-            public ElementNotAvailableException()
-                : base("The element is not available.")
-            {
-                HResult = WinRT.ExceptionHelpers.E_ELEMENTNOTAVAILABLE;
-            }
-
-            public ElementNotAvailableException(string message)
-                : base(message)
-            {
-                HResult = WinRT.ExceptionHelpers.E_ELEMENTNOTAVAILABLE;
-            }
-
-            public ElementNotAvailableException(string message, Exception innerException)
-                : base(message, innerException)
-            {
-                HResult = WinRT.ExceptionHelpers.E_ELEMENTNOTAVAILABLE;
-            }
-
-            protected ElementNotAvailableException(SerializationInfo serializationInfo, StreamingContext streamingContext)
-                : base(serializationInfo, streamingContext)
-            {
-            }
-        }
-
-#if EMBED
-        internal
-#else
-        public
-#endif
-        class ElementNotEnabledException : Exception
-        {
-            public ElementNotEnabledException()
-                : base("The element is not enabled.")
-            {
-                HResult = WinRT.ExceptionHelpers.E_ELEMENTNOTENABLED;
-            }
-
-            public ElementNotEnabledException(string message)
-                : base(message)
-            {
-                HResult = WinRT.ExceptionHelpers.E_ELEMENTNOTENABLED;
-            }
-
-            public ElementNotEnabledException(string message, Exception innerException)
-                : base(message, innerException)
-            {
-                HResult = WinRT.ExceptionHelpers.E_ELEMENTNOTENABLED;
-            }
-        }
-    }
-    namespace Markup
-    {
-
-#if EMBED
-        internal
-#else 
-        public
-#endif
-        class XamlParseException : Exception
-        {
-            public XamlParseException()
-                : base("XAML parsing failed.")
-            {
-                HResult = WinRT.ExceptionHelpers.E_XAMLPARSEFAILED;
-            }
-
-            public XamlParseException(string message)
-                : base(message)
-            {
-                HResult = WinRT.ExceptionHelpers.E_XAMLPARSEFAILED;
-            }
-
-            public XamlParseException(string message, Exception innerException)
-                : base(message, innerException)
-            {
-                HResult = WinRT.ExceptionHelpers.E_XAMLPARSEFAILED;
-            }
-        }
-    }
-    [Serializable]
-#if EMBED
-    internal
-#else
-    public
-#endif
-    class LayoutCycleException : Exception
-    {
-        public LayoutCycleException()
-            : base("A cycle occurred while laying out the GUI.")
-        {
-            HResult = WinRT.ExceptionHelpers.E_LAYOUTCYCLE;
-        }
-
-        public LayoutCycleException(string message)
-            : base(message)
-        {
-            HResult = WinRT.ExceptionHelpers.E_LAYOUTCYCLE;
-        }
-
-        public LayoutCycleException(string message, Exception innerException)
-            : base(message, innerException)
-        {
-            HResult = WinRT.ExceptionHelpers.E_LAYOUTCYCLE;
-        }
-
-        protected LayoutCycleException(SerializationInfo serializationInfo, StreamingContext streamingContext)
-            : base(serializationInfo, streamingContext)
-        {
         }
     }
 }

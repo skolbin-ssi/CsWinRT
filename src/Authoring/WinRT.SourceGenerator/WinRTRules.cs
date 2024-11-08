@@ -9,16 +9,16 @@ namespace WinRT.SourceGenerator
         /// <param name="title">string, a few words generally describing the diagnostic</param>
         /// <param name="messageFormat">string, describes the diagnostic -- formatted with {0}, ... -- 
         /// such that data can be passed in for the code the diagnostic is reported for</param>
-        private static DiagnosticDescriptor MakeRule(string id, string title, string messageFormat)
+        private static DiagnosticDescriptor MakeRule(string id, string title, string messageFormat, bool isError = true, bool isWarning = false)
         {
             return new DiagnosticDescriptor(
                 id: id,
                 title: title,
                 messageFormat: messageFormat,
                 category: "Usage",
-                defaultSeverity: DiagnosticSeverity.Error,
+                defaultSeverity: isError ? DiagnosticSeverity.Error : isWarning? DiagnosticSeverity.Warning : DiagnosticSeverity.Info,
                 isEnabledByDefault: true,
-                helpLinkUri: "https://github.com/microsoft/CsWinRT/tree/master/src/Authoring/WinRT.SourceGenerator/AnalyzerReleases.Unshipped.md");
+                helpLinkUri: "https://github.com/microsoft/CsWinRT/tree/master/src/Authoring/WinRT.SourceGenerator/AnalyzerReleases.Shipped.md");
         }
 
         public static DiagnosticDescriptor PrivateGetterRule = MakeRule(
@@ -179,5 +179,64 @@ namespace WinRT.SourceGenerator
             "CsWinRT1027",
             CsWinRTDiagnosticStrings.UnimplementedInterface_Brief,
             CsWinRTDiagnosticStrings.UnimplementedInterface_Text);
+
+        public static DiagnosticDescriptor ClassNotAotCompatibleWarning = MakeRule(
+            "CsWinRT1028",
+            CsWinRTDiagnosticStrings.ClassNotMarkedPartial_Brief,
+            CsWinRTDiagnosticStrings.ClassNotMarkedPartial_Text,
+            false,
+            true);
+
+        public static DiagnosticDescriptor ClassNotAotCompatibleInfo = MakeRule(
+            "CsWinRT1028",
+            CsWinRTDiagnosticStrings.ClassNotMarkedPartial_Brief,
+            CsWinRTDiagnosticStrings.ClassNotMarkedPartial_Text,
+            false);
+
+        public static DiagnosticDescriptor ClassNotAotCompatibleOldProjectionWarning = MakeRule(
+            "CsWinRT1029",
+            CsWinRTDiagnosticStrings.ClassImplementsOldProjection_Brief,
+            CsWinRTDiagnosticStrings.ClassImplementsOldProjection_Text,
+            false,
+            true);
+
+        public static DiagnosticDescriptor ClassNotAotCompatibleOldProjectionInfo = MakeRule(
+            "CsWinRT1029",
+            CsWinRTDiagnosticStrings.ClassImplementsOldProjection_Brief,
+            CsWinRTDiagnosticStrings.ClassImplementsOldProjection_Text,
+            false);
+
+        public static DiagnosticDescriptor ClassEnableUnsafeWarning = MakeRule(
+            "CsWinRT1030",
+            CsWinRTDiagnosticStrings.EnableUnsafe_Brief,
+            CsWinRTDiagnosticStrings.EnableUnsafe_Text,
+            false,
+            true);
+
+        public static DiagnosticDescriptor ClassEnableUnsafeInfo = MakeRule(
+            "CsWinRT1030",
+            CsWinRTDiagnosticStrings.EnableUnsafe_Brief,
+            CsWinRTDiagnosticStrings.EnableUnsafe_Text,
+            false);
+
+        public static DiagnosticDescriptor ClassWithBindableCustomPropertyNotPartial = MakeRule(
+            "CsWinRT1028",
+            CsWinRTDiagnosticStrings.ClassNotMarkedPartial_Brief,
+            CsWinRTDiagnosticStrings.BindableCustomPropertyClassNotMarkedPartial_Text,
+            false,
+            true);
+
+        public static DiagnosticDescriptor ClassNotAotCompatibleOldProjectionMultipleInstancesWarning = MakeRule(
+            "CsWinRT1029",
+            CsWinRTDiagnosticStrings.ClassImplementsOldProjection_Brief,
+            CsWinRTDiagnosticStrings.ClassOldProjectionMultipleInstances_Text,
+            false,
+            true);
+
+        public static DiagnosticDescriptor ClassNotAotCompatibleOldProjectionMultipleInstancesInfo = MakeRule(
+            "CsWinRT1029",
+            CsWinRTDiagnosticStrings.ClassImplementsOldProjection_Brief,
+            CsWinRTDiagnosticStrings.ClassOldProjectionMultipleInstances_Text,
+            false);
     }
 } 
